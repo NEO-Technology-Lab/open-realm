@@ -70,7 +70,7 @@ enum {
 
 static DWORD const save_magic = MAKEFOURCC('W', '3', 'S', 'V');
 static DWORD const save_commit = MAKEFOURCC('W', '3', 'O', 'K');
-static DWORD const save_version = 20; // format version; adds race-specific construction state to the v19 edict layout
+static DWORD const save_version = 21; // format version; persists channel cast and entity identities in the edict layout
 #define MAX_SAVE_STRING (1u << 20) // bytes; bounds quest-string allocations from corrupt saves
 #define MAX_SAVE_GROUP_HANDLES 65536u // corrupt-save bound only; runtime group registry itself grows dynamically
 #define UMOVE_RELOC_RANGE (64 << 20) // bytes; every umove_t is static data in libgame, so a valid offset from the anchor stays well inside one module image
@@ -109,6 +109,12 @@ static saveCFunction_t const save_cfunctions[] = {
     SAVE_CFUNCTION(tree_pain),
     SAVE_CFUNCTION(tree_die),
     SAVE_CFUNCTION(human_ability_think),
+    SAVE_CFUNCTION(rain_of_fire_think),
+    SAVE_CFUNCTION(starfall_think),
+    SAVE_CFUNCTION(death_and_decay_think),
+    SAVE_CFUNCTION(tranquility_think),
+    SAVE_CFUNCTION(earthquake_think),
+    SAVE_CFUNCTION(whirlwind_think),
 };
 
 static int SaveCFunctionIndex(void *func) {
@@ -319,6 +325,16 @@ static field_t const goldmine_fields[] = {
     { NULL, 0, 0, 0, 0, 0 }
 };
 
+static field_t const mineoverlay_fields[] = {
+    TF(edictMineOverlay_s, parent, F_EDICT, 0, FIELD_NONE),
+    { NULL, 0, 0, 0, 0, 0 }
+};
+
+static field_t const acolyte_mine_fields[] = {
+    TF(edictAcolyteMine_s, mine, F_EDICT, 0, FIELD_NONE),
+    { NULL, 0, 0, 0, 0, 0 }
+};
+
 static field_t const item_fields[] = {
     TF(edictItem_s, carrier, F_EDICT, 0, FIELD_NONE),
     { NULL, 0, 0, 0, 0, 0 }
@@ -412,6 +428,15 @@ static field_t const sleep_fields[] = {
     { NULL, 0, 0, 0, 0, 0 }
 };
 
+static field_t const channel_fields[] = {
+    F(edictChannel_s, code, F_INT),
+    F(edictChannel_s, serial, F_INT),
+    F(edictChannel_s, owner_spawn_time, F_INT),
+    F(edictChannel_s, target_spawn_time, F_INT),
+    F(edictChannel_s, origin, F_VECTOR),
+    { NULL, 0, 0, 0, 0, 0 }
+};
+
 /* Every persistent and process-owned edict field crossing the save boundary is represented here. */
 field_t edict_fields[] = {
     F(edict_s, class_id, F_INT),
@@ -425,6 +450,7 @@ field_t edict_fields[] = {
     F(edict_s, peonsinside, F_INT),
     F(edict_s, aiflags, F_INT),
     F(edict_s, autocast_code, F_INT),
+    F(edict_s, channel, F_STRUCT, 1, channel_fields),
     F(edict_s, damage, F_INT),
     F(edict_s, collision, F_FLOAT),
     F(edict_s, s, F_STRUCT, 1, entity_state_fields),
@@ -433,6 +459,8 @@ field_t edict_fields[] = {
     F(edict_s, revival, F_STRUCT, 1, revival_fields),
     F(edict_s, hero_shortcut_alert_until, F_IGNORE, 0, FIELD_RUNTIME),
     F(edict_s, goldmine, F_STRUCT, 1, goldmine_fields),
+    F(edict_s, mineoverlay, F_STRUCT, 1, mineoverlay_fields),
+    F(edict_s, acolyte_mine, F_STRUCT, 1, acolyte_mine_fields),
     F(edict_s, inventory, F_EDICT, MAX_INVENTORY, FIELD_NONE),
     F(edict_s, cargo, F_STRUCT, 1, cargo_fields),
     F(edict_s, item, F_STRUCT, 1, item_fields),
@@ -480,6 +508,7 @@ static field_t const client_fields[] = {
      * an Esc-menu save can reload a client as paused without a live window. */
     F(client_s, modal_flags, F_IGNORE, 0, FIELD_RUNTIME),
     F(client_s, quest_dialog_open, F_IGNORE, 0, FIELD_RUNTIME),
+    F(client_s, quest_until, F_IGNORE, 0, FIELD_RUNTIME),
     F(client_s, menu, F_STRUCT, 1, client_menu_fields),
     F(client_s, camera, F_STRUCT, 1, client_camera_fields),
     F(client_s, rally_indicator, F_IGNORE, 0, FIELD_RUNTIME),

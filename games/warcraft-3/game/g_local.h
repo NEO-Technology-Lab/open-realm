@@ -434,6 +434,7 @@ struct client_s {
     BOOL cheat_instant_kill; /* developer cheat: owner damage lethally hits units/buildings/destructables */
     DWORD modal_flags;
     BOOL quest_dialog_open;
+    DWORD quest_until; /* FlashQuestDialogButton deadline in simulation milliseconds. */
     menu_t menu;
     struct clientCamera_s {
         CAMERASETUP state;
@@ -466,6 +467,7 @@ struct client_s {
         LONG food_cap;
         LONG gold_rate;
         LONG lumber_rate;
+        DWORD quest_until;
     } resourcebar;
     /* Persistent Hero/idle-worker HUD is rebuilt only after gameplay marks it
      * dirty. last_idle_worker is the cycling cursor, not a per-frame cache. */
@@ -583,6 +585,8 @@ typedef enum {
     A_VALIDATE,         /* Spell pipeline: validate call->target before spending resources; return allowed. */
     A_EXECUTE,          /* Spell pipeline: apply the effect to call->target; return whether it executed. */
     A_ITEM_USE,         /* Inventory click: apply an immediate item effect; return success for charge use. */
+    A_ITEM_ADD,         /* Inventory pickup: apply this item's authored passive modifier. */
+    A_ITEM_REMOVE,      /* Inventory removal: undo this item's authored passive modifier. */
     A_AUTOCAST_ON,      /* Autocast/UI query: return whether autocast is enabled on ent. */
     A_AUTOCAST_SET,     /* Autocast command: set ent's state from call->enabled. */
     A_AUTOCAST_ACQUIRE, /* Unit scheduler: acquire a target and issue an autocast; return whether issued. */
@@ -1029,6 +1033,21 @@ struct edict_s {
         DWORD mine_spawn_time;
         BOOL restore_invulnerable;
     } goldmine;
+    /* Racial mine overlays keep the original Agld unit as the sole finite
+     * gold reservoir. Haunted/Entangled mines own presentation/income only. */
+    struct edictMineOverlay_s {
+        LPEDICT parent;
+        DWORD parent_spawn_time;
+        DWORD income_time;
+        DWORD active_interval_index;
+    } mineoverlay;
+    /* Acolyte harvesting is a visible fixed-slot relationship rather than the
+     * conventional hidden-inside/carry/return Gold Mine state above. */
+    struct edictAcolyteMine_s {
+        LPEDICT mine;
+        DWORD mine_spawn_time;
+        LONG slot;
+    } acolyte_mine;
     LPEDICT inventory[MAX_INVENTORY];
     struct edictItem_s {
         LPEDICT carrier;
@@ -1092,8 +1111,11 @@ struct edict_s {
         BOOL can_sleep; /* mutable natural/night sleep eligibility; seeded from UnitData.canSleep */
         BOOL sleeping;  /* natural creep sleep only; intentionally excludes spell-induced BUsL */
     } sleep;
-    struct {
+    struct edictChannel_s {
         DWORD code;     // ability code being channeled (0 = none)
+        DWORD serial;   // cast identity; old thinkers cannot continue or cancel a replacement cast
+        DWORD owner_spawn_time; // thinker copy of caster identity; rejects reused owner slots
+        DWORD target_spawn_time; // thinker copy of target identity; rejects reused target slots
         VECTOR2 origin; // position when channel started (movement cancels channel)
     } channel;
     DWORD unit_color;   // explicit per-unit color override (0 = use owner color)
@@ -1194,6 +1216,8 @@ typedef struct edictRally_s edictRally_s;
 typedef struct edictRevival_s edictRevival_s;
 typedef struct edictMilitia_s edictMilitia_s;
 typedef struct edictGoldMine_s edictGoldMine_s;
+typedef struct edictMineOverlay_s edictMineOverlay_s;
+typedef struct edictAcolyteMine_s edictAcolyteMine_s;
 typedef struct edictItem_s edictItem_s;
 typedef struct edictDestructable_s edictDestructable_s;
 typedef struct edictCargo_s edictCargo_s;
@@ -1662,6 +1686,7 @@ BOOL SP_FindEmptySpaceAround(LPEDICT, DWORD, LPVECTOR2, FLOAT *);
 BOOL G_FindUnitUnstuckPosition(LPEDICT unit, LPCVECTOR2 requested, LPVECTOR2 out);
 BOOL SP_FindUnitExitPosition(LPEDICT producer, LPEDICT unit, LPVECTOR2 out, FLOAT *angle);
 LPEDICT SP_SpawnAtLocation(DWORD, DWORD, LPCVECTOR2);
+LPEDICT SP_SpawnAtLocationNoBirth(DWORD, DWORD, LPCVECTOR2);
 LPEDICT G_CreateDestructable(DWORD class_id, FLOAT x, FLOAT y, FLOAT z, FLOAT facing, FLOAT scale, DWORD variation);
 LPEDICT G_CreateDeadDestructable(DWORD class_id, FLOAT x, FLOAT y, FLOAT z, FLOAT facing, FLOAT scale, DWORD variation);
 BOOL G_IsDestructable(LPCEDICT ent);
@@ -1845,8 +1870,8 @@ void InitAbilities(void);
 #ifdef WC3_DEBUG_AUTOCAST
 int G_AutocastDebugLevel(void);
 #endif
-BOOL G_UnitAutocastIsOn(LPEDICT ent, ability_t const *ability);
-BOOL G_SetUnitAutocast(LPEDICT ent, ability_t const *ability, BOOL enabled);
+BOOL G_UnitAutocastIsOn(LPEDICT ent, DWORD code);
+BOOL G_SetUnitAutocast(LPEDICT ent, DWORD code, BOOL enabled);
 BOOL G_TryUnitAutocast(LPEDICT ent);
 
 // g_metadata.c
@@ -1888,11 +1913,13 @@ void G_GetBuildPlacementPathingFlags(DWORD building_id, LPBYTE prevented, LPBYTE
 buildPlacementResult_t G_EvaluateBuildPlacement(LPEDICT builder, DWORD building_id, LPCVECTOR2 requested, LPVECTOR2 snapped);
 BOOL G_DisplaceBuildOccupants(LPEDICT builder, LPEDICT building);
 BOOL G_IssueBuildOrder(LPEDICT builder, DWORD building_id, LPCVECTOR2 location);
+BOOL G_FindBuildOnTarget(DWORD building_id, LPCVECTOR2 point, LPEDICT *out);
 FLOAT G_BuildApproachDistance(DWORD building_id);
 BOOL G_StartHumanConstruction(LPEDICT builder, LPEDICT building);
 BOOL G_StartOrcConstruction(LPEDICT builder, LPEDICT building);
 BOOL G_StartUndeadConstruction(LPEDICT builder, LPEDICT building);
 BOOL G_StartNightElfConstruction(LPEDICT builder, LPEDICT building);
+BOOL G_StartNightElfOverlayConstruction(LPEDICT building);
 void G_RunConstructionFrame(LPEDICT building);
 void G_UpdateConstructionAnimation(LPEDICT building);
 void G_StopConstruction(LPEDICT building);
@@ -1921,6 +1948,7 @@ LPEDICT G_GetMainSelectedUnit(LPGAMECLIENT);
 void Get_Commands_f(LPEDICT);
 void CMD_CancelCommand(LPEDICT ent);
 BOOL G_CancelBuildPlacement(LPEDICT clent);
+BOOL build_menu_send_builder(LPEDICT clent, LPCVECTOR2 location);
 void Get_Portrait_f(LPEDICT);
 void G_RefreshInventoryLayer(LPEDICT);
 void G_InvalidateUnitInfoPanel(LPEDICT);
@@ -2100,6 +2128,7 @@ void G_SendMinimapPing(LPGAMECLIENT, LPCVECTOR2, FLOAT, COLOR32, DWORD);
 void G_SendOwnerMinimapAlert(LPEDICT);
 COLOR32 G_SmartTargetIndicatorColor(DWORD, LPCEDICT);
 void G_SendWidgetIndicator(LPEDICT, COLOR32, LPPLAYER);
+void G_ShowCommandErrorKey(LPEDICT, LPCSTR, LPCSTR);
 void G_ShowCommandErrorText(LPEDICT, LPCSTR);
 extern int g_treeFallSounds[3];     /* Sound\Destructibles\TreeFall{1,2,3}.wav configstring indices */
 extern BYTE g_numTreeFallSounds;
@@ -2216,6 +2245,7 @@ void S_SpellResetCooldowns(LPEDICT caster);
 LPCSTR S_SpellString(DWORD code, LPCSTR field, DWORD level);
 
 void order_attack(LPEDICT, LPEDICT);
+BOOL S_OrderAttack(LPEDICT self, LPEDICT target);
 void order_move(LPEDICT, LPEDICT);
 BOOL move_is_active_order_walk(LPCEDICT);
 void order_stop(LPEDICT);
@@ -2234,6 +2264,7 @@ BOOL G_ActorSetSkillPermanent(LPEDICT, DWORD, BOOL);
 BOOL G_ActorSkillPermanent(LPEDICT, DWORD);
 void G_FreeActorSkills(LPEDICT);
 BOOL S_GoldMineIsMine(LPCEDICT);
+BOOL S_GoldMineIsOverlay(LPCEDICT);
 DWORD S_GoldMineMaximumGold(LPCEDICT);
 FLOAT S_GoldMineMiningDuration(LPCEDICT);
 DWORD S_GoldMineCapacity(LPCEDICT);
@@ -2244,6 +2275,17 @@ void S_CancelMilitiaPairing(LPEDICT);
 void S_MilitiaExpire(LPEDICT);
 void S_GoldMineInitUnit(LPEDICT);
 void S_GoldMineReleaseWorker(LPEDICT);
+BOOL S_MineOverlayBind(LPEDICT, LPEDICT);
+void S_MineOverlayBindPreplaced(void);
+void S_MineOverlayRelease(LPEDICT);
+LPEDICT S_CreateBlightedGoldmine(DWORD, LPCVECTOR2, FLOAT);
+void S_GoldMineSetResourceAmount(LPEDICT, DWORD);
+BOOL S_AcolyteHarvestOrder(LPEDICT, LPEDICT);
+void S_AcolyteHarvestRelease(LPEDICT);
+BOOL S_AcolyteHarvestIsActive(LPCEDICT);
+void S_EntangledMineTick(LPEDICT);
+BOOL S_HarvestCanLumber(LPCEDICT);
+BOOL S_HarvestCanGold(LPCEDICT);
 void harvest_start(LPEDICT, LPEDICT);
 void harvest_gold_start(LPEDICT, LPEDICT);
 BOOL harvest_gold_order(LPEDICT, LPEDICT);
@@ -2257,6 +2299,7 @@ BOOL S_CargoTryLoad(LPEDICT, LPEDICT);
 BOOL S_CargoOrderBoard(LPEDICT, LPEDICT);
 BOOL S_CargoAttacksEnabled(LPCEDICT);
 LPEDICT S_CargoTransportForUnit(LPCEDICT);
+void S_CargoReleaseUnit(LPEDICT);
 BOOL S_CargoIsBurrow(LPEDICT);
 DWORD S_CargoCapacity(LPEDICT);
 LPEDICT S_CargoUnitAt(LPCEDICT, DWORD);
@@ -2266,6 +2309,12 @@ void blight_mine_think(LPEDICT);
 void blizzard_think(LPEDICT);
 void flame_strike_tick(LPEDICT);
 void siphon_mana_think(LPEDICT);
+void rain_of_fire_think(LPEDICT);
+void starfall_think(LPEDICT);
+void death_and_decay_think(LPEDICT);
+void tranquility_think(LPEDICT);
+void earthquake_think(LPEDICT);
+void whirlwind_think(LPEDICT);
 BOOL move_selectlocation(LPEDICT, LPCVECTOR2);
 BOOL move_should_arrive(LPEDICT, FLOAT);
 BOOL move_is_blocked(LPEDICT, FLOAT, FLOAT);

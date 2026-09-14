@@ -7,6 +7,8 @@
  * forward declaration, so declare the tag here before using it in prototypes. */
 struct edict_s;
 
+typedef void (*cmLoadYield_t)(void);
+
 typedef struct {
     LPCVECTOR2 from, target;
     FLOAT radius;
@@ -42,7 +44,8 @@ struct war3map {
     DWORD num_cliffs;
 };
 
-bool CM_LoadMap(LPCSTR mapFilename);
+/* Synchronous format parsers cooperatively yield through the caller-owned callback. */
+bool CM_LoadMap(LPCSTR mapFilename, cmLoadYield_t yield);
 DWORD CM_GetMapChecksum(void);
 BOOL CM_IsMapLoaded(LPCSTR mapFilename);
 float CM_GetHeightAtPoint(float sx, float sy);

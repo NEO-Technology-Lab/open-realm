@@ -115,7 +115,30 @@ static void capture_scene_fog_configstring(DWORD index, LPCSTR value) {
 
 static void capture_pause(BOOL paused) { captured_pause = paused; }
 
-/* Retail common.ai passes VERSION_FROZEN_THRONE as a version handle during hero selection. */
+/* Campaign messages explicitly request attention; opening the journal acknowledges it. */
+TEST(wc3_api, quest_flash_is_player_local_and_acknowledged) {
+    LPPLAYER saved = currentplayer;
+    DWORD oldtime = level.time;
+    setup_test_world();
+    game.clients[0].quest_until = game.clients[1].quest_until = 0;
+    currentplayer = test_player(1); level.time = 500;
+    T_ASSERT(run_test_jass("function main takes nothing returns nothing\n call FlashQuestDialogButton()\nendfunction\n"));
+    T_EQ(game.clients[0].quest_until, 0);
+    T_EQ(game.clients[1].quest_until, 10500);
+    level.time = 1500;
+    T_ASSERT(run_test_jass("function main takes nothing returns nothing\n call FlashQuestDialogButton()\nendfunction\n"));
+    T_EQ(game.clients[1].quest_until, 11500);
+    UI_ShowQuests(PLAYER_ENT(currentplayer));
+    T_EQ(game.clients[1].quest_until, 0);
+    game.clients[1].connected = true; g_edicts[1].inuse = false;
+    game.clients[1].resourcebar.gold_rate = game.clients[1].resourcebar.lumber_rate = 100;
+    game.clients[1].quest_until = level.time = 11500;
+    G_UpdateClientResourceBars();
+    T_EQ(game.clients[1].quest_until, 0);
+    game.clients[1].connected = false;
+    currentplayer = saved; level.time = oldtime;
+}
+
 TEST(wc3_api, version_queries_accept_typed_handles) {
     T_ASSERT(run_test_jass(
         "function main takes nothing returns nothing\n"
@@ -1512,6 +1535,18 @@ TEST(wc3_api, transient_command_style_text_does_not_enter_message_log) {
 
     T_STREQ(gc->message.text, "Not enough gold.");
     T_EQ(gc->message_log.count, 0);
+}
+
+TEST(wc3_api, command_error_key_resolves_commandstrings_and_race_variant) {
+    LPGAMECLIENT gc = &game.clients[0];
+    EDICT ent = { .client = gc };
+
+    gc->ps.race = kPlayerRaceUndead;
+    G_ShowCommandErrorKey(&ent, "Blightringfull", "fallback");
+    T_STREQ(gc->message.text, "That gold mine can't support any more Acolytes.");
+
+    G_ShowCommandErrorKey(&ent, "Nofood", "fallback");
+    T_STREQ(gc->message.text, "Summon more Ziggurats to continue unit production.");
 }
 
 TEST(wc3_api, message_log_is_bounded_and_evicts_oldest_entry) {

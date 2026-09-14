@@ -1647,6 +1647,128 @@ TEST(wc3_game, hud_authored_row_stride_uses_template_height) {
 }
 
 
+static uiFrame_t quest_sprite;
+static DWORD quest_sprite_count;
+static PATHSTR quest_model;
+static int quest_test_model(LPCSTR name) { snprintf(quest_model, sizeof(quest_model), "%s", name); return 77; }
+static void quest_test_write(pfWriteType_t type, void const *value) {
+    LPCUIFRAME frame = value;
+    if (type == PF_UIFRAME && frame->flags.type == FT_SPRITE) { quest_sprite = *frame; quest_sprite_count++; }
+}
+
+/* Serialize the stock skin model as a passive foreground sprite, relative to the authored quest button. */
+TEST(wc3_game, hud_quest_indicator_uses_skin_anchor_and_timeout) {
+    __typeof__(gi.Write) old_write = gi.Write;
+    __typeof__(gi.ModelIndex) old_model = gi.ModelIndex;
+    LPFRAMEDEF old_button = hud.upper.UpperButtonBarQuestsButton;
+    DWORD oldtime = level.time;
+    LPGAMECLIENT client = &game.clients[0];
+    FRAMEDEF button = { .Type = FT_FRAME };
+    gi.Write = quest_test_write; gi.ModelIndex = quest_test_model;
+    hud.upper.UpperButtonBarQuestsButton = &button;
+    UI_ResetFrameWriteList(); UI_WriteFrame(&button);
+    level.time = 100; client->quest_until = 200; quest_sprite_count = 0;
+    UI_WriteQuestIndicator(client);
+    T_EQ(quest_sprite_count, 1);
+    T_STREQ(quest_model, "UI\\Feedback\\QuestButton\\UI-QuestButtonOn.mdl");
+    T_EQ(quest_sprite.tex.index, 77); T_STREQ(quest_sprite.text, "Stand");
+    T_ASSERT(quest_sprite.flagsvalue & UIFLAG_SPRITE_OVERLAY);
+    T_EQ(quest_sprite.parent, UI_GetWrittenFrameNumber(&button));
+    T_EQ(quest_sprite.points.y[FPP_MIN].targetPos, FPP_MAX);
+    T_NULL(quest_sprite.onclick);
+    level.time = 200;
+    UI_WriteQuestIndicator(client); T_EQ(quest_sprite_count, 1);
+    client->quest_until = 0; level.time = oldtime;
+    gi.Write = old_write; gi.ModelIndex = old_model; hud.upper.UpperButtonBarQuestsButton = old_button;
+    UI_ResetFrameWriteList();
+}
+
+static uiFrame_t autocast_sprite;
+static DWORD autocast_sprite_count, autocast_parent;
+static PATHSTR autocast_model;
+static int autocast_test_model(LPCSTR name) { snprintf(autocast_model, sizeof(autocast_model), "%s", name); return 88; }
+static int autocast_test_image(LPCSTR name) { (void)name; return 1; }
+static void autocast_test_write(pfWriteType_t type, void const *value) {
+    LPCUIFRAME frame = value;
+    if (type != PF_UIFRAME || !frame) return;
+    if (frame->flags.type == FT_COMMANDBUTTON) autocast_parent = frame->number;
+    if (frame->flags.type == FT_SPRITE) { autocast_sprite = *frame; autocast_sprite_count++; }
+}
+
+/* Serialize the autocast skin model as a foreground sprite when alternate_active is set. */
+TEST(wc3_game, hud_autocast_indicator_uses_skin_model_and_overlay) {
+    __typeof__(gi.Write) old_write = gi.Write;
+    __typeof__(gi.ModelIndex) old_model = gi.ModelIndex;
+    __typeof__(gi.ImageIndex) old_image = gi.ImageIndex;
+    DWORD oldnum = ui_next_frame_number;
+    gameCommandButton_t button = { .command = "AHea", .art = "test", .alternate = "autocast AHea", .alternate_active = 1 };
+
+    ui_next_frame_number = 1;
+
+    gi.Write = autocast_test_write; gi.ModelIndex = autocast_test_model; gi.ImageIndex = autocast_test_image;
+    autocast_sprite_count = 0;
+    UI_ResetFrameWriteList();
+    UI_WriteCommandButtonFrame(&button);
+
+    T_EQ(autocast_sprite_count, 1);
+    T_STREQ(autocast_model, "UI\\Feedback\\Autocast\\UI-ModalButtonOn.mdl");
+    T_EQ(autocast_sprite.tex.index, 88); T_STREQ(autocast_sprite.text, "Stand");
+    T_ASSERT(autocast_sprite.flagsvalue & UIFLAG_SPRITE_OVERLAY);
+    T_NULL(autocast_sprite.onclick);
+    T_EQ(autocast_sprite.parent, autocast_parent);
+    T_EQ(autocast_sprite.points.x[FPP_MIN].relativeTo, UI_PARENT);
+    T_EQ(autocast_sprite.points.x[FPP_MIN].targetPos, FPP_MIN);
+    T_EQ(autocast_sprite.points.x[FPP_MIN].offset, 0);
+    T_ASSERT(autocast_sprite.points.x[FPP_MIN].used);
+    T_EQ(autocast_sprite.points.y[FPP_MIN].relativeTo, UI_PARENT);
+    T_EQ(autocast_sprite.points.y[FPP_MIN].targetPos, FPP_MAX);
+    T_EQ(autocast_sprite.points.y[FPP_MIN].offset, 0);
+    T_ASSERT(autocast_sprite.points.y[FPP_MIN].used);
+
+    /* A second card slot owns its own sprite, including while the command is disabled. */
+    DWORD first = autocast_sprite.parent;
+    button.x = 2; button.y = 1; button.disabled = 1;
+    UI_WriteCommandButtonFrame(&button);
+    T_EQ(autocast_sprite_count, 2);
+    T_EQ(autocast_sprite.parent, autocast_parent);
+    T_NE(autocast_sprite.parent, first);
+
+    /* Each refreshed layout derives presence from current state; off drops the overlay. */
+    ui_next_frame_number = 1; autocast_sprite_count = 0; button.alternate_active = 0;
+    UI_WriteCommandButtonFrame(&button);
+    T_EQ(autocast_sprite_count, 0);
+    ui_next_frame_number = 1; button.alternate_active = 1;
+    UI_WriteCommandButtonFrame(&button);
+    T_EQ(autocast_sprite_count, 1);
+    T_EQ(autocast_sprite.parent, autocast_parent);
+
+    ui_next_frame_number = oldnum;
+    gi.Write = old_write; gi.ModelIndex = old_model; gi.ImageIndex = old_image;
+    UI_ResetFrameWriteList();
+}
+
+/* No autocast sprite when alternate_active is off. */
+TEST(wc3_game, hud_autocast_indicator_suppressed_when_off) {
+    __typeof__(gi.Write) old_write = gi.Write;
+    __typeof__(gi.ModelIndex) old_model = gi.ModelIndex;
+    __typeof__(gi.ImageIndex) old_image = gi.ImageIndex;
+    DWORD oldnum = ui_next_frame_number;
+    gameCommandButton_t button = { .command = "AHea", .art = "test" };
+
+    ui_next_frame_number = 1;
+
+    gi.Write = autocast_test_write; gi.ModelIndex = autocast_test_model; gi.ImageIndex = autocast_test_image;
+    autocast_sprite_count = 0;
+    UI_ResetFrameWriteList();
+    UI_WriteCommandButtonFrame(&button);
+
+    T_EQ(autocast_sprite_count, 0);
+
+    ui_next_frame_number = oldnum;
+    gi.Write = old_write; gi.ModelIndex = old_model; gi.ImageIndex = old_image;
+    UI_ResetFrameWriteList();
+}
+
 TEST(wc3_game, hud_quest_visibility_requires_enabled_and_discovered) {
     QUEST quest = { 0 };
 
@@ -2831,6 +2953,10 @@ SAVE_INT_FIELD_TEST(field_peons_inside_round_trip, peonsinside, 5)
 SAVE_INT_FIELD_TEST(field_ai_flags_round_trip, aiflags, 0x55)
 SAVE_INT_FIELD_TEST(field_damage_round_trip, damage, 99)
 SAVE_INT_FIELD_TEST(field_autocast_code_round_trip, autocast_code, MAKEFOURCC('A', 'h', 'e', 'a'))
+SAVE_INT_FIELD_TEST(field_channel_code_round_trip, channel.code, MAKEFOURCC('A', 'H', 'd', 'r'))
+SAVE_INT_FIELD_TEST(field_channel_serial_round_trip, channel.serial, 7)
+SAVE_INT_FIELD_TEST(field_channel_owner_spawn_round_trip, channel.owner_spawn_time, 200)
+SAVE_INT_FIELD_TEST(field_channel_target_spawn_round_trip, channel.target_spawn_time, 300)
 SAVE_INT_FIELD_TEST(field_avatar_level_round_trip, avatar.level, 2)
 SAVE_INT_FIELD_TEST(field_avatar_damage_round_trip, avatar.damage, 31)
 SAVE_FLOAT_FIELD_TEST(field_avatar_armor_round_trip, avatar.armor, 7.0f)
@@ -2886,6 +3012,20 @@ TEST(wc3_save, field_origin_round_trip) {
     T_ASSERT(WriteGame(filename)); unit->s.origin = (VECTOR3){ 0 }; T_ASSERT(ReadGame(filename));
     T_FEQ(unit->s.origin.x, 12.5f, 0.001f); T_FEQ(unit->s.origin.y, 34.5f, 0.001f);
     T_FEQ(unit->s.origin.z, 56.5f, 0.001f); remove(filename);
+}
+
+/* Movement cancellation must compare against the saved cast position after restoring a live channel. */
+TEST(wc3_save, field_channel_origin_round_trip) {
+    LPCSTR filename = "/tmp/openwarcraft3-wc3-save-channel-origin.bin";
+    field_t const *desc = find_save_field("channel.origin");
+    reset_entities();
+    LPEDICT unit = alloc_test_unit(MAKEFOURCC('h', 'p', 'e', 'a'), 0, 0);
+    T_NOT_NULL(desc);
+    if (desc) T_EQ(desc->type, F_VECTOR);
+    unit->channel.origin = (VECTOR2){ 12.5f, 34.5f };
+    T_ASSERT(WriteGame(filename)); unit->channel.origin = (VECTOR2){0}; T_ASSERT(ReadGame(filename));
+    T_FEQ(unit->channel.origin.x, 12.5f, 0.001f); T_FEQ(unit->channel.origin.y, 34.5f, 0.001f);
+    remove(filename);
 }
 
 TEST(wc3_save, field_vertex_tint_round_trip) {
@@ -2958,12 +3098,53 @@ TEST(wc3_save, construction_payment_round_trip) {
     remove(filename);
 }
 
+TEST(wc3_save, racial_gold_mine_state_round_trip) {
+    LPCSTR filename = "/tmp/openwarcraft3-wc3-save-racial-gold-mine.bin";
+    LPEDICT parent, overlay, acolyte;
+
+    reset_entities();
+    parent = alloc_test_unit(MAKEFOURCC('n', 'g', 'o', 'l'), 0.0f, 0.0f);
+    overlay = alloc_test_unit(MAKEFOURCC('h', 'b', 'a', 'r'), 0.0f, 0.0f);
+    acolyte = alloc_test_unit(MAKEFOURCC('h', 'p', 'e', 'a'), 64.0f, 0.0f);
+    parent->resources = 7777;
+    overlay->mineoverlay.parent = parent;
+    overlay->mineoverlay.parent_spawn_time = parent->spawn_time;
+    overlay->mineoverlay.income_time = 12345;
+    overlay->mineoverlay.active_interval_index = 3;
+    acolyte->acolyte_mine.mine = overlay;
+    acolyte->acolyte_mine.mine_spawn_time = overlay->spawn_time;
+    acolyte->acolyte_mine.slot = 4;
+
+    T_ASSERT(WriteGame(filename));
+    overlay->mineoverlay.parent = NULL;
+    overlay->mineoverlay.parent_spawn_time = 0;
+    overlay->mineoverlay.income_time = 0;
+    overlay->mineoverlay.active_interval_index = 0;
+    acolyte->acolyte_mine.mine = NULL;
+    acolyte->acolyte_mine.mine_spawn_time = 0;
+    acolyte->acolyte_mine.slot = -1;
+    parent->resources = 0;
+    T_ASSERT(ReadGame(filename));
+
+    T_ASSERT(overlay->mineoverlay.parent == parent);
+    T_EQ(overlay->mineoverlay.parent_spawn_time, parent->spawn_time);
+    T_EQ(overlay->mineoverlay.income_time, 12345);
+    T_EQ(overlay->mineoverlay.active_interval_index, 3);
+    T_ASSERT(acolyte->acolyte_mine.mine == overlay);
+    T_EQ(acolyte->acolyte_mine.mine_spawn_time, overlay->spawn_time);
+    T_EQ(acolyte->acolyte_mine.slot, 4);
+    T_EQ(parent->resources, 7777);
+    remove(filename);
+}
+
 SAVE_PTR_FIELD_TEST(field_primary_builder_round_trip, "construction.primary_builder", construction.primary_builder, 0)
 SAVE_PTR_FIELD_TEST(field_construction_worker_round_trip, "construction.worker", construction.worker, 0)
 SAVE_PTR_FIELD_TEST(field_rally_entity_round_trip, "rally.entity", rally.entity, 0)
 SAVE_PTR_FIELD_TEST(field_revival_producer_round_trip, "revival.producer", revival.producer, 0)
 SAVE_PTR_FIELD_TEST(field_revival_queue_next_round_trip, "revival.queue_next", revival.queue_next, 0)
 SAVE_PTR_FIELD_TEST(field_goldmine_round_trip, "goldmine.mine", goldmine.mine, 0)
+SAVE_PTR_FIELD_TEST(field_mineoverlay_parent_round_trip, "mineoverlay.parent", mineoverlay.parent, 0)
+SAVE_PTR_FIELD_TEST(field_acolyte_mine_round_trip, "acolyte_mine.mine", acolyte_mine.mine, 0)
 SAVE_PTR_FIELD_TEST(field_inventory_round_trip, "inventory", inventory[3], MAX_INVENTORY)
 SAVE_PTR_FIELD_TEST(field_cargo_round_trip, "cargo.units", cargo.units[4], MAX_CARGO)
 SAVE_PTR_FIELD_TEST(field_item_carrier_round_trip, "item.carrier", item.carrier, 0)

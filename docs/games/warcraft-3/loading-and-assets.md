@@ -55,9 +55,17 @@ The batch includes inherited Loading.fdf template media declarations, but exclud
 WC3's background/bar are models, so moving only images earlier is insufficient.
 
 For a listen server, `SV_Map` establishes the connection and sends this loading batch before `ge->LoadMap`, then
-calls `CL_LoadingFrame`. This limited packet pump invokes no command buffer, client tick, server tick, or gameplay
-callback. `cl.precache_ready` prevents the early layout/`CS_WORLD` from starting bulk registration until the full
-configstring/baseline handshake reaches `precache`. Dedicated servers skip the presentation pump.
+calls `CL_LoadingFrame`. This limited loading pump invokes no command buffer, client tick, server tick, or gameplay
+callback. On Ubuntu/Linux, it also calls `SDL_PumpEvents` so the window manager continues receiving events while the
+synchronous map load owns the main thread; without this, Ubuntu can display “This window is not responding.” The pump
+is throttled centrally and does not consume queued gameplay input. WC3 passes the required
+`game_import.LoadingFrame` callback into `CM_LoadMap` for that invocation; the common W3 map parser runs its ordered
+archive-section table and yields after each phase. `G_LoadMap` also yields between world/HUD/entity/script phases,
+and large entity-spawn loops yield periodically. The callback is never retained in collision-model state. Dedicated
+servers remain no-ops. This follows Quake 3's `CG_LoadingString` -> `trap_UpdateScreen` cooperative loading pattern;
+do not run the full command/input event loop re-entrantly because queued session changes can invalidate the active
+load stack. `cl.precache_ready` prevents the early layout/`CS_WORLD` from starting bulk registration until the full
+configstring/baseline handshake reaches `precache`.
 
 `CS_ASSET_SCOPE` and `re.SetAssetScope` establish map-import resolution before renderer world registration.
 This matters for custom loading MDX models whose companion textures live inside the destination archive.
