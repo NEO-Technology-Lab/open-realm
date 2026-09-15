@@ -11,7 +11,7 @@ static BOOL G_TutorialFlowDebugEnabledForMapSource(void) {
 
 /* Keep generated war3map.j as the authoritative source for preplaced units and items. */
 static BOOL G_LoadMapUnitData(void) {
-    return gi.CvarString && atoi(gi.CvarString("wc3_load_units_from_map_data", "0")) != 0;
+    return atoi(gi.CvarString("wc3_load_units_from_map_data", "0")) != 0;
 }
 
 /* Unit/item placements are duplicated by the generated CreateAllUnits/CreateAllItems functions. */
@@ -20,6 +20,10 @@ static BOOL G_MapObjectCreatedByMapScript(DWORD id) {
         return false;
     return G_UnitUI(id)->modelFile || G_ItemData(id)->file;
 }
+
+#ifdef BZ_TESTS
+BOOL G_TestMapObjectCreatedByMapScript(DWORD id) { return G_MapObjectCreatedByMapScript(id); }
+#endif
 
 static void G_JassCoroutineTrace(HANDLE trigger_handle, LPCSTR function, LPCSTR phase,
                                  DWORD now, DWORD wake_time, BOOL yielded, BOOL done) {

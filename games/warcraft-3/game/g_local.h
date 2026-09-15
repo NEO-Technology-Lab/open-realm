@@ -1784,6 +1784,9 @@ void SP_CallSpawn(LPEDICT);
 void G_BindEntityData(LPEDICT);
 void G_BindEntityRuntime(LPEDICT);
 void G_SpawnEntities(void);
+#ifdef BZ_TESTS
+BOOL G_TestMapObjectCreatedByMapScript(DWORD id);
+#endif
 BOOL SP_FindEmptySpaceAround(LPEDICT, DWORD, LPVECTOR2, FLOAT *);
 BOOL G_FindUnitUnstuckPosition(LPEDICT unit, LPCVECTOR2 requested, LPVECTOR2 out);
 BOOL SP_FindUnitExitPosition(LPEDICT producer, LPEDICT unit, LPVECTOR2 out, FLOAT *angle);

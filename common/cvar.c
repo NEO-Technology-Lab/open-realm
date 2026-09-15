@@ -538,6 +538,8 @@ void Cvar_Init(void) {
     Cvar_GetD("g_module",         "game",              CVAR_ARCHIVE, "game logic shared library name");
     Cvar_GetD("ui_game_setup_map","",                  0,            "map pre-selected in game setup UI");
 #ifdef WC3
+    Cvar_GetD("wc3_load_units_from_map_data", "0", 0,
+              "load preplaced units/items from war3mapUnits.doo instead of generated map-script creation");
     Cvar_GetD("wc3_cheat_starting_resources", "0", 0,
               "cheat: add 5000 gold and 5000 lumber to each human player's map-authored starting resources");
 #endif
