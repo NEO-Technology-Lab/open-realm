@@ -9,6 +9,18 @@ static BOOL G_TutorialFlowDebugEnabledForMapSource(void) {
     return WC3_TUTORIAL_DEBUG_ENABLED();
 }
 
+/* Keep generated war3map.j as the authoritative source for preplaced units and items. */
+static BOOL G_LoadMapUnitData(void) {
+    return gi.CvarString && atoi(gi.CvarString("wc3_load_units_from_map_data", "0")) != 0;
+}
+
+/* Unit/item placements are duplicated by the generated CreateAllUnits/CreateAllItems functions. */
+static BOOL G_MapObjectCreatedByMapScript(DWORD id) {
+    if (id == MAKEFOURCC('s', 'l', 'o', 'c') || G_Doodad(id)->id || G_DestructableData(id)->file)
+        return false;
+    return G_UnitUI(id)->modelFile || G_ItemData(id)->file;
+}
+
 static void G_JassCoroutineTrace(HANDLE trigger_handle, LPCSTR function, LPCSTR phase,
                                  DWORD now, DWORD wake_time, BOOL yielded, BOOL done) {
     LPTRIGGER trigger = trigger_handle;
@@ -673,6 +685,8 @@ void G_SpawnEntities(void) {
     DWORD spawn_count = 0;
     FOR_EACH_LIST(DOODAD const, doodad, entities) {
         if ((spawn_count++ & 127u) == 0) gi.LoadingFrame();
+        if (!G_LoadMapUnitData() && G_MapObjectCreatedByMapScript(doodad->doodID))
+            continue;
 //        if (doodad->doodID == MAKEFOURCC('h', 'C', '0', '2')) {
 //            int a=0;
 //            printf("%.4s", )
