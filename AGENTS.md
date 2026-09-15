@@ -234,9 +234,21 @@ Key flags: `-prefix <Name>` sets the struct and function prefix; `-root <FrameNa
   race/faction/unit/spell/franchise-specific proper noun, and (2) any new `#ifdef <GAME>` guard or hardcoded
   per-game command string added to a function that previously had none. Either one means the change belongs in
   `games/<game>/` instead — route it through the shared dispatcher's existing function-table hook (or add one)
-  rather than branching inline. See [docs/architecture/server-selected-effects.md](docs/architecture/server-selected-effects.md)
-  for the reference pattern and worked examples of these mistakes and their fixes.
+  rather than branching inline. "Franchise-specific" includes generic-sounding resource and mechanic names that are
+  unique to one game's design, such as WC3 Gold/Lumber, SC2 Minerals/Vespene, or WoW talent points; it is not limited
+  to character, race, or spell names. If a new `common/`, `client/`, `renderer/`, or `server/` symbol is only consumed
+  by logic in one `games/<game>/` directory, that is itself the signal to move it, regardless of how generic the name
+  sounds. Run the engine-boundary check mechanically with `python3 tools/engine_boundary_audit.py`: it diffs those
+  directories against `main` and flags new symbols matching the maintained per-game term list and new `#ifdef <GAME>`
+  guards. Run it before finishing any diff touching those directories. See PR #412 (`EF_RESOURCE_GOLD_SOURCE` /
+  `RESOURCE_GOLD_SOURCE_MIN_DISTANCE` in `common/shared.h` and `CL_BuildCursorTooCloseToGoldSource` in
+  `client/cl_view.c`) for the kind of violation a visual scan missed, and see
+  [docs/architecture/server-selected-effects.md](docs/architecture/server-selected-effects.md) for the reference
+  pattern and worked examples of these mistakes and the fixes.
 - **New code paths need new tests.** If you add an `if` branch, a new function, a new field, or a new cache/state machine, write a test for the new path and its inverse.
+- **A revert must remove the whole feature's wiring, not just the part that failed.** Before finishing a revert, list every symbol the original commits touched and confirm each is either fully removed or still has a complete, live call graph. `git diff <revert>^ <revert>` must read as self-consistent on its own; it must not depend on a later commit to become sound again. Do not leave a production entry point, such as a JASS native or command handler, driving a state machine whose periodic scheduler hookup was reverted out from under it.
+- **Periodic functions need scheduler-path tests.** Any function meant to run every frame or tick, such as a `G_Run*` function, queue drain, or periodic sweep, needs a test proving the real scheduler calls it. Run the actual per-frame entry point (`G_RunFrame()` or equivalent) enough times to observe the queued state resolve; calling the drain function directly only proves it works in isolation.
+- **A function with zero callers outside `tests/` is a red flag, not a coverage win.** Grep for callers before finishing a diff. If the only call sites are under `games/warcraft-3/game/tests/`, either wire it into the real path or explain in the commit message why it is intentionally test-only.
 - **Cache/state-machine changes double-test.** Test both cache hit and cache miss paths, and verify performance counters where tracked.
 - **Run `make test` before committing code or executable fixture/build changes.** This umbrella target runs all test binaries: `test_openwarcraft3` (net + tool_common), `test-commands`, `test-server-net`, `test-sc2`, `test-wow-*`, `test-ui`, and `test-wc3-engine` (in-engine WC3 tests). Documentation-only edits need text, link, and diff checks, not builds, game launches, or the full test suite.
 - **In-engine WC3 tests** live in `games/warcraft-3/game/tests/` and run headlessly against the generated fixture MPQ via `make test-wc3-engine` (or `build/bin/openwarcraft3-tests -data build/tests +dedicated 1 +test '*'`). They exercise production game code without an interactive gameplay session or a developer's installed archives.
@@ -265,9 +277,11 @@ Key principles inline:
 - Never hardcode game-specific asset names, animation names, or franchise-specific literals in engine code —
   including enum members, macros, and struct field names in `common/`, `renderer/`, `client/`, `server/`.
   A named boolean for one race/unit/spell (e.g. `RF_BUILDING_FIRE_UNDEAD`) does not belong in a shared enum
-  even though the flags field itself is generic infrastructure. Test: if a symbol you're adding to a
-  non-`games/` path contains a proper noun from one game's fiction, stop — move the resolution into
-  `games/<game>/` and expose a generic field instead.
+  even though the flags field itself is generic infrastructure. "Franchise-specific" also includes generic-sounding
+  resources and mechanics unique to one game's design, such as WC3 Gold/Lumber, SC2 Minerals/Vespene, and WoW talent
+  points. If a symbol added to a non-`games/` path is only consumed by one `games/<game>/` implementation, stop — move
+  the resolution into that game directory and expose a generic field or callback instead, even when the name contains
+  no obvious proper noun.
 - Never use `#ifdef SC2`/`#ifdef WOW`/`#ifdef WC3` (or any per-game macro) to gate *any* code in shared engine
   files (`client/`, `common/`, `renderer/`, `server/`) — not just constants, but branches, command handlers,
   and logic blocks too. If code only matters for one game, it belongs in `games/<game>/`, reached through the
