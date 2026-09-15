@@ -221,6 +221,20 @@ TEST(wc3_api, leaderboard_natives_manage_items_sort_and_player_assignment) {
     currentplayer = saved_currentplayer;
 }
 
+TEST(wc3_api, leaderboard_display_uses_client_slot_for_mapped_player) {
+    LPLEADERBOARD board;
+    setup_test_world();
+    game.clients[0].ps.number = 1;
+    game.clients[1].ps.number = 0;
+    board = G_AllocLeaderboard();
+    G_SetPlayerLeaderboard(0, board);
+    G_SetLeaderboardDisplayed(board, &game.clients[1].ps, true);
+    T_ASSERT(board->displayed_clients & (1u << 1));
+    T_ASSERT(!(board->displayed_clients & 1u));
+    T_ASSERT(G_IsLeaderboardDisplayed(board, &game.clients[1].ps));
+    T_ASSERT(!G_IsLeaderboardDisplayed(board, &game.clients[0].ps));
+}
+
 TEST(wc3_api, version_queries_accept_typed_handles) {
     T_ASSERT(run_test_jass(
         "function main takes nothing returns nothing\n"

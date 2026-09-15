@@ -48,6 +48,12 @@ void UI_LoadHudLeaderboards(void) {
         fprintf(stderr, "WC3 HUD: missing LeaderBoard.fdf\n");
         return;
     }
+#ifdef WC3_DEBUG_HUMAN06
+    if (WC3_HUMAN06_DEBUG_ENABLED())
+        fprintf(stderr, "Human06Diag leaderboard hud_load root=%p backdrop=%p title=%p container=%p\n",
+                (void *)hud.leaderboard.Leaderboard, (void *)hud.leaderboard.LeaderboardBackdrop,
+                (void *)hud.leaderboard.LeaderboardTitle, (void *)hud.leaderboard.LeaderboardListContainer);
+#endif
 
     /* Use the same full-screen widescreen anchor and edge offsets as the
      * TimerDialog so both HUD types start at the same top-right position. */
@@ -88,10 +94,21 @@ void UI_WriteLeaderboard(LPEDICT ent) {
     backdrop = hud.leaderboard.LeaderboardBackdrop;
     title = hud.leaderboard.LeaderboardTitle;
     container = hud.leaderboard.LeaderboardListContainer;
-    if (!board || !(board->displayed_clients & (1u << player)) || !root || !container) {
+    if (!board || !G_IsLeaderboardDisplayed(board, &ent->client->ps) || !root || !container) {
+#ifdef WC3_DEBUG_HUMAN06
+        if (WC3_HUMAN06_DEBUG_ENABLED())
+            fprintf(stderr, "Human06Diag leaderboard skip client=%u board=%p displayed=%d root=%p container=%p\n",
+                    player, (void *)board, board ? (int)G_IsLeaderboardDisplayed(board, &ent->client->ps) : 0,
+                    (void *)root, (void *)container);
+#endif
         UI_ClearLayer(ent, WC3_LAYER_LEADERBOARD);
         return;
     }
+#ifdef WC3_DEBUG_HUMAN06
+    if (WC3_HUMAN06_DEBUG_ENABLED())
+        fprintf(stderr, "Human06Diag leaderboard draw client=%u board=%p items=%u label=\"%s\" displayed=0x%08x\n",
+                player, (void *)board, board->item_count, board->label, board->displayed_clients);
+#endif
 
     rows = board->size_by_item_count >= 0 ? (DWORD)board->size_by_item_count : board->item_count;
     rows = MAX(1u, MIN(rows, (DWORD)MAX_LEADERBOARD_ITEMS));
