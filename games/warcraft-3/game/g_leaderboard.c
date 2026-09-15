@@ -9,6 +9,13 @@ static LONG leaderboard_index(LPCLEADERBOARD board) {
     return (LONG)((ptr - base) / sizeof(*board));
 }
 
+/* Dirty bits address client slots, while leaderboard ownership uses WC3 player numbers. */
+static DWORD leaderboard_client_mask(DWORD player) {
+    FOR_LOOP(i, MIN((DWORD)game.max_clients, (DWORD)MAX_CLIENTS))
+        if (game.clients[i].ps.number == player) return 1u << i;
+    return 0;
+}
+
 LPLEADERBOARD G_AllocLeaderboard(void) {
     FOR_LOOP(i, MAX_LEADERBOARDS) if (!level.leaderboards[i].inuse) {
         LPLEADERBOARD board = &level.leaderboards[i];
@@ -26,7 +33,7 @@ void G_FreeLeaderboard(LPLEADERBOARD board) {
     if (index < 0) return;
     FOR_LOOP(i, MAX_PLAYERS) if (level.player_leaderboards[i] == index) {
         level.player_leaderboards[i] = -1;
-        if (i < MAX_CLIENTS) level.leaderboard_dirty_clients |= 1u << i;
+        level.leaderboard_dirty_clients |= leaderboard_client_mask(i);
     }
     memset(board, 0, sizeof(*board));
 }
@@ -43,13 +50,13 @@ void G_SetPlayerLeaderboard(DWORD player, LPLEADERBOARD board) {
     index = board ? leaderboard_index(board) : -1;
     if (board && index < 0) return;
     level.player_leaderboards[player] = index;
-    if (player < MAX_CLIENTS) level.leaderboard_dirty_clients |= 1u << player;
+    level.leaderboard_dirty_clients |= leaderboard_client_mask(player);
 }
 
 void G_SetLeaderboardDisplayed(LPLEADERBOARD board, LPPLAYER player, BOOL displayed) {
     DWORD mask;
     if (leaderboard_index(board) < 0) return;
-    if (player) { DWORD n = PLAYER_NUM(player); if (n >= MAX_CLIENTS) return; mask = 1u << n; }
+    if (player) mask = leaderboard_client_mask(PLAYER_NUM(player));
     else { DWORD count = MIN((DWORD)game.max_clients, (DWORD)MAX_CLIENTS); mask = count ? (DWORD)((1ull << count) - 1ull) : 0; }
     if (displayed) board->displayed_clients |= mask; else board->displayed_clients &= ~mask;
     level.leaderboard_dirty_clients |= mask;
@@ -57,7 +64,7 @@ void G_SetLeaderboardDisplayed(LPLEADERBOARD board, LPPLAYER player, BOOL displa
 
 BOOL G_IsLeaderboardDisplayed(LPCLEADERBOARD board, LPCPLAYER player) {
     if (!board || !board->inuse) return false;
-    if (player) { DWORD n = PLAYER_NUM(player); return n < MAX_CLIENTS && (board->displayed_clients & (1u << n)); }
+    if (player) return board->displayed_clients & leaderboard_client_mask(PLAYER_NUM(player));
     DWORD count = MIN((DWORD)game.max_clients, (DWORD)MAX_CLIENTS);
     DWORD mask = count ? (DWORD)((1ull << count) - 1ull) : 0;
     return mask && (board->displayed_clients & mask) == mask;
@@ -67,7 +74,7 @@ void G_MarkLeaderboardDirty(LPCLEADERBOARD board) {
     LONG index = leaderboard_index(board);
     if (index < 0) return;
     FOR_LOOP(i, MIN((DWORD)MAX_PLAYERS, (DWORD)MAX_CLIENTS))
-        if (level.player_leaderboards[i] == index) level.leaderboard_dirty_clients |= 1u << i;
+        if (level.player_leaderboards[i] == index) level.leaderboard_dirty_clients |= leaderboard_client_mask(i);
 }
 
 void G_UpdateLeaderboards(void) {
@@ -77,7 +84,7 @@ void G_UpdateLeaderboards(void) {
         LPEDICT ent;
         if (!(dirty & (1u << i))) continue;
         if (!game.clients[i].connected) { level.leaderboard_dirty_clients &= ~(1u << i); continue; }
-        ent = G_GetPlayerEntityByNumber(i);
+        ent = G_GetPlayerEntityByNumber(game.clients[i].ps.number);
         if (ent && ent->client) UI_WriteLeaderboard(ent);
         level.leaderboard_dirty_clients &= ~(1u << i);
     }
