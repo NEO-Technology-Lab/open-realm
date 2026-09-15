@@ -1710,7 +1710,14 @@ DWORD jass_dotoken(LPJASS j, LPCTOKEN token) {
  * Statement evaluators
  * ========================================================================= */
 
-static void jass_set_value(LPJASS j, LPJASSVAR dest, LPCTOKEN init) {
+static FLOAT jass_numbervalue(LPCJASSVAR var) {
+    if (!var || !var->value) return 0.0f;
+    if (jass_getvarbasetype(var) == jasstype_real) return *(FLOAT *)var->value;
+    if (jass_getvarbasetype(var) == jasstype_integer) return *(LONG *)var->value;
+    return 0.0f;
+}
+
+static void jass_set_value(LPJASS j, LPJASSVAR dest, LPCTOKEN init, LPCSTR name) {
     DWORD stack = jass_dotoken(j, init);
     /* Normally an initializer expression yields exactly one value.  Tolerate
      * other counts instead of aborting: a value-returning function whose body
@@ -1718,8 +1725,12 @@ static void jass_set_value(LPJASS j, LPJASSVAR dest, LPCTOKEN init) {
      * otherwise crash the whole VM mid-map.  Assign the top value when one was
      * produced and pop exactly what was pushed so the stack stays balanced. */
     if (stack >= 1) {
+        FLOAT before = jass_numbervalue(dest);
         jass_copy(j, dest, j->stack + jass_top(j));
         jass_pop(j, stack);
+        if (name && jass_host.VariableChanged &&
+            (jass_getvarbasetype(dest) == jasstype_integer || jass_getvarbasetype(dest) == jasstype_real))
+            jass_host.VariableChanged(name, before, jass_numbervalue(dest));
     }
 }
 
@@ -1743,7 +1754,7 @@ static LPJASSDICT parse_dict(LPJASS j, LPCTOKEN token) {
     item->value.type = find_type(j, token->primary);
     item->key = token->secondary;
     if (token->init) {
-        jass_set_value(j, &item->value, token->init);
+        jass_set_value(j, &item->value, token->init, NULL);
     }
     return item;
 }
@@ -1802,13 +1813,13 @@ TOKENFUNC(SET) {
         if (token->index) {
             return jass_set_array_value(j, v, token, token->init);
         } else {
-            return jass_set_value(j, v, token->init);
+            return jass_set_value(j, v, token->init, token->secondary);
         }
     } else if ((v = find_dict(jass_stackvalue(j, 0)->env.locals, token->secondary))) {
         if (token->index) {
             return jass_set_array_value(j, v, token, token->init);
         } else {
-            return jass_set_value(j, v, token->init);
+            return jass_set_value(j, v, token->init, NULL);
         }
     } else {
         fprintf(stderr, "Can't find variable %s\n",

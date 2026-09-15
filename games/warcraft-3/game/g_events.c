@@ -2,6 +2,26 @@
 
 BOOL jass_calltriggerevent(LPJASS j, LPTRIGGER trigger, GAMEEVENT const *event);
 
+BOOL G_LimitMatches(DWORD op, FLOAT value, FLOAT limit) {
+    switch (op) {
+        case WC3_LIMITOP_LESS_THAN: return value < limit;
+        case WC3_LIMITOP_LESS_THAN_OR_EQUAL: return value <= limit;
+        case WC3_LIMITOP_EQUAL: return value == limit;
+        case WC3_LIMITOP_GREATER_THAN_OR_EQUAL: return value >= limit;
+        case WC3_LIMITOP_GREATER_THAN: return value > limit;
+        case WC3_LIMITOP_NOT_EQUAL: return value != limit;
+        default: return false;
+    }
+}
+
+void G_JassVariableChanged(LPCSTR name, FLOAT before, FLOAT after) {
+    FOR_EACH_EVENT(evt) {
+        if (evt->type == EVENT_GAME_VARIABLE_LIMIT && evt->variable && !strcmp(evt->variable, name) &&
+            !G_LimitMatches(evt->limitop, before, evt->limitval) && G_LimitMatches(evt->limitop, after, evt->limitval))
+            G_PublishEvent(NULL, EVENT_GAME_VARIABLE_LIMIT)->responseTo = evt;
+    }
+}
+
 /* One authoritative terminal-result transition shared by JASS RemovePlayer
  * and developer cheats.  Keep campaign/result presentation downstream of the
  * normal EVENT_PLAYER_VICTORY / EVENT_PLAYER_DEFEAT pipeline. */
@@ -91,6 +111,7 @@ static void G_ExecuteEvent(GAMEEVENT *evt) {
             case EVENT_GAME_END_LEVEL:
                 break;
             case EVENT_GAME_VARIABLE_LIMIT:
+                if (evt->responseTo == e) jass_calltriggerevent(level.vm, e->trigger, evt);
                 break;
             case EVENT_GAME_STATE_LIMIT:
                 if (evt->responseTo == e) {

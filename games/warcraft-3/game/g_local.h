@@ -1381,6 +1381,7 @@ struct gevent_s {
     DWORD state;
     DWORD limitop;
     FLOAT limitval;
+    LPCSTR variable;
     BOOL inuse;
 };
 
@@ -2299,6 +2300,8 @@ BOOL G_IsDeferredFree(LPCEDICT);
 void G_RunDeferredFrees(void);
 void G_ResetDeferredFrees(void);
 LPEVENT G_MakeEvent(EVENTTYPE);
+void G_JassVariableChanged(LPCSTR, FLOAT, FLOAT);
+BOOL G_LimitMatches(DWORD, FLOAT, FLOAT);
 LPQUEST G_MakeQuest(void);
 BOOL G_RegionContains(LPCREGION, LPCVECTOR2);
 void G_RemoveQuest(LPQUEST);
