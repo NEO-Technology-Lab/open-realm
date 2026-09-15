@@ -1432,12 +1432,15 @@ TEST(wc3_api, variable_event_fires_when_counter_reaches_limit) {
         "  call TriggerAddAction(t, function onCounter)\n"
         "  set counter = 99\n"
         "  set counter = 100\n"
+        "  set counter = 101\n"
         "endfunction\n"));
     writes = level.events.write;
     T_EQ(writes, 1);
     G_RunEvents();
     jass_runevents(level.vm);
     T_EQ(level.events.read, writes);
+    G_UpdateTimeOfDay();
+    T_FEQ(G_GetTimeOfDay(), 12.0f, 0.001f);
 }
 
 /* The retail cripple timer broadcasts with a direct local-player argument after its local IF. */

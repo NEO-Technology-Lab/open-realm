@@ -70,7 +70,7 @@ enum {
 
 static DWORD const save_magic = MAKEFOURCC('W', '3', 'S', 'V');
 static DWORD const save_commit = MAKEFOURCC('W', '3', 'O', 'K');
-static DWORD const save_version = 24; // format version; persists WC3 leaderboard handles/items/player assignment
+static DWORD const save_version = 25; // format version; persists variable-limit event names
 #define MAX_SAVE_STRING (1u << 20) // bytes; bounds quest-string allocations from corrupt saves
 #define MAX_SAVE_GROUP_HANDLES 65536u // corrupt-save bound only; runtime group registry itself grows dynamically
 #define UMOVE_RELOC_RANGE (64 << 20) // bytes; every umove_t is static data in libgame, so a valid offset from the anchor stays well inside one module image
@@ -196,6 +196,7 @@ static field_t const save_event_fields[] = {
     F(gevent_s, state, F_INT),
     F(gevent_s, limitop, F_INT),
     F(gevent_s, limitval, F_FLOAT),
+    F(gevent_s, variable, F_LSTRING),
     F(gevent_s, inuse, F_INT),
     { NULL, 0, 0, 0, 0, 0 }
 };
