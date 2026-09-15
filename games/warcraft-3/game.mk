@@ -70,6 +70,9 @@ run-demo: $(BINARY) install-share
 run-map: $(BINARY) install-share
 	$(BINARY) -data $(WC3DATA) +map "$(MAP)"
 
+dump-wc3-jass: mpqtool
+	@python3 tools/export_wc3_jass.py --mpq "$(subst \,,$(MPQ))" --mpqtool "$(BIN_DIR)/mpqtool$(EXE_EXT)" --output data/maps
+
 TRACE_FILE := build/profile-map.trace
 
 profile-map: $(BINARY) xctraceprof
@@ -268,6 +271,6 @@ download: $(ZIP_FILE)
 $(ZIP_FILE):
 	curl -L -o $(ZIP_FILE) $(ZIP_URL)
 
-WC3_PHONY := wc3-build jass-tool jass sheet renderer game menu openwarcraft3 run run-demo run-map test \
+WC3_PHONY := wc3-build jass-tool jass sheet renderer game menu openwarcraft3 run run-demo run-map dump-wc3-jass test \
 	test-commands test-server-net test-renderer-model test-mdx-ui test-renderer-view test-renderer-shadows test-galaxy test-menu test-mpq-compat test-assets test-render-golden \
 	update-render-golden openwarcraft3-tests test-wc3-engine download
