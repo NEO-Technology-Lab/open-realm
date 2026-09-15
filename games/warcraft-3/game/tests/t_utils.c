@@ -176,6 +176,7 @@ static BOOL run_test_jass_impl(LPCSTR src, LPCSTR expected) {
         .RuntimeError     = ignore_jass_error,
         .SaveHandle       = G_SaveJassHandle,
         .LoadHandle       = G_LoadJassHandle,
+        .VariableChanged  = G_JassVariableChanged,
     ));
     level.vm = jass_newstate();
 

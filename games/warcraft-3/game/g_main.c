@@ -97,18 +97,6 @@ void G_ApplyStartingResourceCheat(void) {
     }
 }
 
-static BOOL G_TimeLimitMatches(DWORD op, FLOAT value, FLOAT limit) {
-    switch (op) {
-        case WC3_LIMITOP_LESS_THAN: return value < limit;
-        case WC3_LIMITOP_LESS_THAN_OR_EQUAL: return value <= limit;
-        case WC3_LIMITOP_EQUAL: return value == limit;
-        case WC3_LIMITOP_GREATER_THAN_OR_EQUAL: return value >= limit;
-        case WC3_LIMITOP_GREATER_THAN: return value > limit;
-        case WC3_LIMITOP_NOT_EQUAL: return value != limit;
-        default: return false;
-    }
-}
-
 static FLOAT G_GetCanonicalTimeOfDay(void) {
     FLOAT const day_hours = game.constants.gameDayHours;
     FLOAT const day_length = game.constants.gameDayLength;
@@ -188,8 +176,8 @@ static void G_CheckTimeOfDayEvents(FLOAT before, FLOAT after) {
     FOR_EACH_EVENT(evt) {
         if (evt->type != EVENT_GAME_STATE_LIMIT || evt->state != WC3_GAME_STATE_TIME_OF_DAY)
             continue;
-        if (!G_TimeLimitMatches(evt->limitop, before, evt->limitval) &&
-            G_TimeLimitMatches(evt->limitop, after, evt->limitval))
+        if (!G_LimitMatches(evt->limitop, before, evt->limitval) &&
+            G_LimitMatches(evt->limitop, after, evt->limitval))
         {
             G_PublishEvent(NULL, EVENT_GAME_STATE_LIMIT)->responseTo = evt;
         }

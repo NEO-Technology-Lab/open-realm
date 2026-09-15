@@ -53,6 +53,7 @@ void G_InitJassHost(void) {
         .SaveHandle = G_SaveJassHandle,
         .LoadHandle = G_LoadJassHandle,
         .CoroutineTrace = G_JassCoroutineTrace,
+        .VariableChanged = G_JassVariableChanged,
     ));
 }
 

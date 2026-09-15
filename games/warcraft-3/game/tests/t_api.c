@@ -1392,7 +1392,7 @@ TEST(wc3_time, game_state_event_fires_on_false_to_true_transition) {
     G_UpdateTimeOfDay();
     T_ASSERT(run_test_jass(
         "function onTime takes nothing returns nothing\n"
-        "  call SetFloatGameState(GAME_STATE_TIME_OF_DAY, 12.0)\n"
+        "  call SetFloatGameState(ConvertFGameState(2), 12.0)\n"
         "endfunction\n"
         "function main takes nothing returns nothing\n"
         "  local trigger t = CreateTrigger()\n"
@@ -1414,6 +1414,30 @@ TEST(wc3_time, game_state_event_fires_on_false_to_true_transition) {
     T_EQ(level.events.write, writes);
     G_UpdateTimeOfDay();
     T_EQ(level.events.write, writes);
+}
+
+TEST(wc3_api, variable_event_fires_when_counter_reaches_limit) {
+    DWORD writes;
+
+    T_ASSERT(run_test_jass(
+        "globals\n"
+        "  integer counter = 0\n"
+        "endglobals\n"
+        "function onCounter takes nothing returns nothing\n"
+        "  call SetFloatGameState(GAME_STATE_TIME_OF_DAY, 12.0)\n"
+        "endfunction\n"
+        "function main takes nothing returns nothing\n"
+        "  local trigger t = CreateTrigger()\n"
+        "  call TriggerRegisterVariableEvent(t, \"counter\", ConvertLimitOp(2), 100.0)\n"
+        "  call TriggerAddAction(t, function onCounter)\n"
+        "  set counter = 99\n"
+        "  set counter = 100\n"
+        "endfunction\n"));
+    writes = level.events.write;
+    T_EQ(writes, 1);
+    G_RunEvents();
+    jass_runevents(level.vm);
+    T_EQ(level.events.read, writes);
 }
 
 /* The retail cripple timer broadcasts with a direct local-player argument after its local IF. */

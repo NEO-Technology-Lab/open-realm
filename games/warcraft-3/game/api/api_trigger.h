@@ -189,11 +189,19 @@ DWORD GetTriggerExecCount(LPJASS j) {
  * response context before conditions and actions, then restores it for nested
  * triggers; state-limit events fire on the qualifying transition. */
 DWORD TriggerRegisterVariableEvent(LPJASS j) {
-    //LPTRIGGER whichTrigger = jass_checkhandle(j, 1, "trigger");
-    //LPCSTR varName = jass_checkstring(j, 2);
-    //HANDLE opcode = jass_checkhandle(j, 3, "limitop");
-    //FLOAT limitval = jass_checknumber(j, 4);
-    return jass_pushnullhandle(j, "event");
+    LPTRIGGER whichTrigger = jass_checkhandle(j, 1, "trigger");
+    LPCSTR varName = jass_checkstring(j, 2);
+    LPSTR variable;
+    LPDWORD opcode = jass_checkhandle(j, 3, "limitop");
+    FLOAT limitval = jass_checknumber(j, 4);
+    LPEVENT evt;
+    if (!whichTrigger || !varName || !opcode) return jass_pushnullhandle(j, "event");
+    evt = G_MakeEvent(EVENT_GAME_VARIABLE_LIMIT);
+    if (!evt) return jass_pushnullhandle(j, "event");
+    variable = gi.MemAlloc(strlen(varName) + 1); strcpy(variable, varName);
+    evt->trigger = whichTrigger; evt->variable = variable; evt->limitop = *opcode; evt->limitval = limitval;
+    QuestPeonStageLogRegistration(whichTrigger, EVENT_GAME_VARIABLE_LIMIT, NULL, "variable");
+    return jass_pushlighthandle(j, evt, "event");
 }
 DWORD TriggerRegisterTimerEvent(LPJASS j) {
     LPTRIGGER whichTrigger = jass_checkhandle(j, 1, "trigger");
