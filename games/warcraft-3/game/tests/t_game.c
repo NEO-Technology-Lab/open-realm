@@ -3362,6 +3362,28 @@ TEST(wc3_save, round_trip_game_state_event_condition) {
     remove(filename);
 }
 
+TEST(wc3_save, round_trip_variable_event_condition) {
+    LPCSTR filename = "/tmp/openwarcraft3-wc3-variable-event-save-test.bin";
+    LEVELEVENTS old_events = level.events;
+    EVENT handler = {
+        .type = EVENT_GAME_VARIABLE_LIMIT,
+        .limitop = WC3_LIMITOP_EQUAL,
+        .limitval = 100.0f,
+        .variable = "counter",
+    };
+
+    reset_entities();
+    memset(&level.events, 0, sizeof(level.events));
+    level.events.handlers[0] = handler; level.events.handlers[0].inuse = true;
+    LPEVENT saved_handler = &level.events.handlers[0];
+    T_ASSERT(WriteGame(filename));
+    saved_handler->variable = NULL;
+    T_ASSERT(ReadGame(filename));
+    T_STREQ(saved_handler->variable, "counter");
+    level.events = old_events;
+    remove(filename);
+}
+
 TEST(wc3_save, round_trip_unread_event_queue) {
     LPCSTR filename = "/tmp/openwarcraft3-wc3-event-save-test.bin";
     LEVELEVENTS old_events = level.events;
