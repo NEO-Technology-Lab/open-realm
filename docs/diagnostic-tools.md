@@ -1,5 +1,13 @@
 # Diagnostic Tools
 
+## Warcraft III Campaign Map Audit
+
+Use `make audit-wc3-maps` to run every shipped RoC/TFT campaign map for a
+bounded headless frame budget and produce per-map JSON, Markdown, and raw logs.
+Use `make test-wc3-map-audit` for the retail-data-independent tool tests. See
+[Warcraft III Campaign Map Audit](games/warcraft-3/map-audit.md) for focused
+runs, longer frame budgets, report semantics, and the GitHub issue command.
+
 ## MPQ Inspection (mpqtool)
 
 - When investigating Warcraft III assets, prefer using the local CLI utility `build/bin/mpqtool` instead of guessing file paths.
