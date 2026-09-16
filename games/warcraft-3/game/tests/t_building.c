@@ -367,6 +367,39 @@ TEST(wc3_building, building_upgrade_uses_relative_unit_costs_and_cancel_restores
     building_restore_morph_data(rows);
 }
 
+TEST(wc3_building, instant_build_cheat_completes_building_upgrade_on_next_frame) {
+    LPGAMECLIENT client = &game.clients[0];
+    DWORD const source_id = MAKEFOURCC('h','b','a','r');
+    DWORD const target_id = MAKEFOURCC('o','t','r','b');
+    UnitProfile_t profile = { .upgrade = "otrb" };
+    buildingMorphRows_t rows;
+    LPEDICT building;
+
+    setup_test_world();
+    rows = building_install_morph_data();
+    building = alloc_test_unit(source_id, 64, 64);
+    building->data.UnitProfile = &profile;
+    building->s.player = client->ps.number;
+    client->ps.stats[PLAYERSTATE_RESOURCE_GOLD] = 500;
+    client->ps.stats[PLAYERSTATE_RESOURCE_LUMBER] = 500;
+    client->ps.stats[PLAYERSTATE_RESOURCE_FOOD_CAP] = 20;
+    client->cheat_instant_build = true;
+    memset(client->tech, 0, sizeof(client->tech));
+
+    T_ASSERT(G_StartBuildingUpgrade(building, target_id));
+    T_ASSERT(G_BuildingUpgradeActive(building));
+    T_FEQ(building->research.progress, 0.0f, 0.001f);
+
+    G_RunBuildingUpgradeFrame(building);
+
+    T_ASSERT(!G_BuildingUpgradeActive(building));
+    T_EQ(building->class_id, target_id);
+    T_EQ(G_GetPlayerTechInProgress(client, target_id), 0);
+
+    client->cheat_instant_build = false;
+    building_restore_morph_data(rows);
+}
+
 TEST(wc3_building, building_upgrade_completion_morphs_in_place_and_preserves_health_ratio) {
     LPGAMECLIENT client = &game.clients[0];
     DWORD const source_id = MAKEFOURCC('h','b','a','r');
@@ -1500,6 +1533,64 @@ TEST(wc3_building, human_construction_start_sets_explicit_state_and_start_life) 
     T_EQ(building->construction.lumber, 0);
     T_ASSERT(building->aiflags & AI_HOLD_FRAME);
     T_FEQ(building->health.value, 100.0f, 0.001f);
+}
+
+TEST(wc3_building, instant_build_cheat_completes_started_human_construction_on_next_frame) {
+    LPGAMECLIENT client = &game.clients[0];
+    LPEDICT builder;
+    LPEDICT building;
+    UnitBalance_t balance;
+
+    setup_test_world();
+    builder = alloc_test_unit(MAKEFOURCC('h','p','e','a'), 0, 0);
+    building = alloc_test_unit(MAKEFOURCC('h','b','a','r'), 64, 64);
+    balance = *building->data.UnitBalance;
+    balance.buildTime = 60;
+    building->data.UnitBalance = &balance;
+    building->s.player = client->ps.number;
+    building->health.max_value = 1000.0f;
+    building->health.value = 1000.0f;
+    client->cheat_instant_build = true;
+
+    T_ASSERT(G_StartHumanConstruction(builder, building));
+    T_ASSERT(building->construction.active);
+    T_ASSERT(building->construction.paused);
+
+    G_RunConstructionFrame(building);
+
+    T_ASSERT(!building->construction.active);
+    T_FEQ(building->health.value, building->health.max_value, 0.001f);
+
+    client->cheat_instant_build = false;
+}
+
+TEST(wc3_building, instant_build_cheat_completes_autonomous_construction_on_next_frame) {
+    LPGAMECLIENT client = &game.clients[0];
+    LPEDICT worker;
+    LPEDICT building;
+    UnitBalance_t balance;
+
+    setup_test_world();
+    worker = alloc_test_unit(MAKEFOURCC('h','p','e','a'), 0, 0);
+    building = alloc_test_unit(MAKEFOURCC('h','b','a','r'), 64, 64);
+    balance = *building->data.UnitBalance;
+    balance.buildTime = 60;
+    building->data.UnitBalance = &balance;
+    building->s.player = client->ps.number;
+    building->health.max_value = 1000.0f;
+    building->health.value = 1000.0f;
+    client->cheat_instant_build = true;
+
+    T_ASSERT(G_StartOrcConstruction(worker, building));
+    T_ASSERT(building->construction.active);
+
+    G_RunConstructionFrame(building);
+
+    T_ASSERT(!building->construction.active);
+    T_FEQ(building->health.value, building->health.max_value, 0.001f);
+    T_NULL(worker->build);
+
+    client->cheat_instant_build = false;
 }
 
 TEST(wc3_building, removing_construction_releases_repair_worker) {

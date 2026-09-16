@@ -85,6 +85,7 @@ UnitProfile.Upgrade / uupt
        -> publish UPGRADE_START events
     -> G_RunBuildingUpgradeFrame
        -> advance target UnitBalance.buildTime
+       -> instant build/warpten: complete on the next upgrade frame
        -> completion: G_TransformUnitType(existing edict, target)
     -> target unit data/model/stats/abilities/pathing
        -> preserve edict/JASS identity, owner, position, and health percentage
@@ -264,7 +265,7 @@ Static building footprints are rebuilt after building death. `common/routing.c` 
 
 The spawned building now records an explicit construction strategy. Human remains Repair-driven and paused; Orc, Undead, and Night Elf buildings use the shared autonomous construction clock in `G_RunConstructionFrame()`. Orc Peons and Night Elf Wisps are hidden/paused/invulnerable while inside construction. Undead Acolytes remain visible for the short summon-work window and are then released while the structure continues. Night Elf structures classified `ancient` consume their Wisp on successful completion; cancellation/destruction releases the Wisp and restores its authored Food Used.
 
-The building owns temporary-worker state (`construction.worker` plus `spawn_time`) separately from Human `construction.primary_builder`. Completion, cancellation, combat death, and direct `G_FreeEdict()` all use the same worker-release path. Human Repair rejects active autonomous construction, so it cannot become a second construction clock.
+The building owns temporary-worker state (`construction.worker` plus `spawn_time`) separately from Human `construction.primary_builder`. Completion, cancellation, combat death, and direct `G_FreeEdict()` all use the same worker-release path. Human Repair rejects active autonomous construction, so it cannot become a second construction clock. The per-player `instant build`/`warpten` cheat is checked only by this shared construction state before the normal Human paused-strategy gate, so every started standard-race structure completes through `G_CompleteConstruction()` on its next entity frame regardless of worker update order while preserving the ordinary worker-release, event, food, sound, and UI lifecycle. The older self-linked legacy Repair construction path keeps its own compatibility check until that path is removed.
 
 See [Race Mechanics](race-mechanics.md) for the clean-room comparison, state ownership, save/load requirements, and deferred race-specific economy/terrain mechanics.
 
@@ -357,6 +358,7 @@ Construction and owned-building Repair now share the behavior described above. T
 Focused automated checks after building:
 
 ```sh
+make test-wc3-engine WC3_PATTERN='wc3_building.instant_build_cheat_*'
 make test-wc3-engine WC3_PATTERN='wc3_building.*'
 make test-wc3-engine WC3_PATTERN='wc3_api.issue_build_order_by_id_*'
 make test-wc3-engine WC3_PATTERN='wc3_api.construct_finish_*'
@@ -407,6 +409,8 @@ Runtime checks should cover at least:
 37. Attempt standard or Human Repair on autonomous Orc/Undead/Night Elf construction and verify it is rejected rather than adding a second construction clock.
 38. Save/load while a race-owned construction worker is attached and verify the `construction.worker` edict reference and lifecycle flags round-trip.
 39. Place a gold-return Town Hall-class ghost 511 world units from a live Gold Mine and verify the whole preview footprint is red and clicking reports `Unable to build so close to the gold mine.`; move the snapped centre to exactly 512 units and verify the mine-distance rule no longer rejects it.
+40. Enable `instant build`, start Human and autonomous-race construction, and verify each structure completes through the normal construction lifecycle on its next entity frame even when no Repair worker frame runs first.
+41. Enable `instant build`, start an in-place `uupt` building upgrade, and verify it completes on the next upgrade frame through the normal morph/finish-event lifecycle.
 
 ## See Also
 

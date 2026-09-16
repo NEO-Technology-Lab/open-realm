@@ -358,15 +358,6 @@ static void ai_repair(LPEDICT ent) {
             repair_stop_reason(ent, "construction_not_paused_or_no_data");
             return;
         }
-        if (G_PlayerInstantBuild(building->s.player)) {
-            building->construction.progress =
-                MAX(1.0f, (FLOAT)building->data.UnitBalance->buildTime * 1000.0f);
-            hp->value = hp->max_value;
-            G_UpdateConstructionAnimation(building);
-            G_CompleteConstruction(building);
-            repair_stop_reason(ent, "construction_complete_instant_cheat");
-            return;
-        }
         if (ent->buildwork.primary) {
             if (building->construction.primary_builder != ent) {
                 repair_stop_reason(ent, "lost_primary_builder");
