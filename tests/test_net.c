@@ -868,7 +868,7 @@ static void capture_layout_scoped_text(LPCDRAWTEXT text) {
     if (!strcmp(text->text, "save-name")) test_scoped_edit_text_draws++;
 }
 
-static void test_send_edit_window(DWORD id, DWORD class_id) {
+static void test_send_edit_window(DWORD id, DWORD class_id, DWORD flags) {
     BYTE buf[2048], arena[128] = { 0 };
     sizeBuf_t sb = make_msg_buf(buf, sizeof(buf));
     uiFrame_t empty = {0};
@@ -885,7 +885,7 @@ static void test_send_edit_window(DWORD id, DWORD class_id) {
     text_frame.text = (LPCSTR)(uintptr_t)text_offset;
 
     MSG_WriteByte(&sb, svc_window); MSG_WriteByte(&sb, UI_WINDOW_OPEN);
-    MSG_WriteLong(&sb, id); MSG_WriteLong(&sb, class_id); MSG_WriteLong(&sb, UI_WINDOW_MODAL | UI_WINDOW_NO_PAUSE);
+    MSG_WriteLong(&sb, id); MSG_WriteLong(&sb, class_id); MSG_WriteLong(&sb, flags);
     MSG_WriteDeltaUIWindowFrame(&sb, &empty, &edit_frame, true);
     MSG_WriteByte(&sb, sizeof(edit)); MSG_Write(&sb, &edit, sizeof(edit));
     MSG_WriteDeltaUIWindowFrame(&sb, &empty, &text_frame, true);
@@ -1006,7 +1006,7 @@ TEST(net, window_edit_text_does_not_leak_into_same_number_hud_frame) {
     /* Frame indexes are local to each serialized layout. Deliberately make
      * persistent HUD frame 2 collide with the edit box's text child frame 2. */
     test_install_text_layout_frame(LAYER_INFOPANEL, 2, "HUD frame");
-    test_send_edit_window(15, 105);
+    test_send_edit_window(15, 105, UI_WINDOW_MODAL | UI_WINDOW_NO_PAUSE);
     test_scoped_hud_text_draws = 0;
     test_scoped_edit_text_draws = 0;
 
@@ -1016,6 +1016,35 @@ TEST(net, window_edit_text_does_not_leak_into_same_number_hud_frame) {
     T_EQ(test_scoped_edit_text_draws, 1);
     CL_WindowClear();
     SCR_ClearLayoutLayer(LAYER_INFOPANEL);
+}
+
+TEST(net, nonmodal_edit_yields_arrow_keys_to_gameplay) {
+    test_client_stubs_init(); CL_WindowClear();
+    test_send_edit_window(16, 106, 0);
+
+    T_ASSERT(!CL_WindowModalActive());
+    T_ASSERT(CL_WindowTextInputActive());
+    T_ASSERT(!CL_WindowKeyEvent(K_LEFTARROW));
+    T_ASSERT(!CL_WindowKeyEvent(K_RIGHTARROW));
+    T_ASSERT(!CL_WindowKeyEvent(K_UPARROW));
+    T_ASSERT(!CL_WindowKeyEvent(K_DOWNARROW));
+    T_ASSERT(CL_WindowKeyEvent(8));
+
+    CL_WindowClear();
+}
+
+TEST(net, modal_edit_keeps_arrow_keys_for_local_input) {
+    test_client_stubs_init(); CL_WindowClear();
+    test_send_edit_window(17, 107, UI_WINDOW_MODAL | UI_WINDOW_NO_PAUSE);
+
+    T_ASSERT(CL_WindowModalActive());
+    T_ASSERT(CL_WindowTextInputActive());
+    T_ASSERT(CL_WindowKeyEvent(K_LEFTARROW));
+    T_ASSERT(CL_WindowKeyEvent(K_RIGHTARROW));
+    T_ASSERT(CL_WindowKeyEvent(K_UPARROW));
+    T_ASSERT(CL_WindowKeyEvent(K_DOWNARROW));
+
+    CL_WindowClear();
 }
 
 TEST(net, window_click_raises_and_moves_keyboard_focus) {

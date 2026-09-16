@@ -75,6 +75,8 @@ Defaults live in `games/<game>/share/config.cfg`, installed with `make install-s
 
 All builds register `+select`, `+attack`, `+smart`, `+pan`, `+look`, `+forward`, `+back`, `+moveleft`, `+moveright`,
 `+camwest`, `+cameast`, `+camnorth`, `+camsouth`, `zoom`, and `group`. Edge/arrow panning follows camera yaw.
+Transient gameplay-window focus and modal ownership are documented in [client windows](client-windows.md); non-modal edit
+controls must yield directional camera arrows to this binding path, while modal dialogs own input completely.
 Mouse sensitivity defaults to `cl_mouse_speed 0.18` degrees/pixel, click threshold to 10 pixels, and edge margin to
 6 pixels. Existing `zoom_speed`, `camera_min_distance`, and `camera_max_distance` still apply. Server-authored
 snapshot defaults determine initial angles/distance. To enable orbit drag in WC3, for example, bind an unused key

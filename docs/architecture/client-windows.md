@@ -72,6 +72,9 @@ retained arena; it does not duplicate strings.
 - Escape closes the active window unless it has `UI_WINDOW_NO_ESCAPE`; a no-Escape modal consumes the key and stays open.
 - Clicking outside all non-modal windows clears focus.
 - A modal window blocks world hit testing, control groups, bindings, minimap actions, and manual camera movement.
+- A focused non-modal edit box yields `LEFTARROW` and `RIGHTARROW` to gameplay bindings, matching the existing Up/Down
+  fallthrough so WC3 camera scrolling remains symmetric. Modal edit boxes keep all four arrows for local input and therefore do
+  not move the world camera behind the dialog.
 - Key-up still reaches gameplay `+command` releases so opening or focusing a window cannot leave an input held.
 - `close_window_command <command>` forwards the suffix to the server and then closes the owning window; use it for transactional
   Accept/Cancel buttons that must commit or discard server-owned draft state before dismissal.
@@ -134,10 +137,11 @@ them as `PF_UIFRAME` made the inline-string codec dereference the first arena of
 select the offset-aware codec. `wc3_game.hud_authored_window_frame_uses_offset_codec` guards this boundary.
 
 The standalone net tests cover text offsets, a text arena above 255 bytes, screen-pass drawing, unique-class replacement,
-linked-list raise order, keyboard focus, and malformed packets without a frame terminator.
+linked-list raise order, keyboard focus, non-modal/modal edit-box arrow ownership, and malformed packets without a frame terminator.
 
 ## See Also
 
+- [Shared client input and orbit camera](shared-input.md)
 - [Warcraft III Allies Menu](../games/warcraft-3/allies-menu.md)
 
 ### Live edit-box rendering
