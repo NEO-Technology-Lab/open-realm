@@ -297,6 +297,7 @@ TEST(wc3_building, hud_texture_paths_are_authored_per_recipient) {
     DWORD image = UI_LoadTexture("Background", true);
     T_STREQ(building_image_path, "Human.blp");
     T_EQ(UI_LiveImage(image), 1); T_STREQ(building_image_path, "Human.blp");
+    T_STREQ(hud.image_key[image], "Background");
     client.ps.race = kPlayerRaceOrc;
     T_EQ(UI_LiveImage(image), 1); T_STREQ(building_image_path, "Orc.blp");
     UI_SetCurrentClient(NULL);

@@ -264,8 +264,11 @@ static void UI_RememberImage(DWORD index, LPCSTR key, LPCSTR resolved, BOOL deco
      * new occupant is the shuffled-icon bug. */
     if (hud.image_key[index][0] && key && strcmp(hud.image_key[index], key))
         return;
-    snprintf(hud.image_key[index], sizeof(hud.image_key[index]), "%s", key ? key : "");
-    snprintf(hud.image_name[index], sizeof(hud.image_name[index]), "%s", resolved ? resolved : "");
+    /* Live-image lookup can return the same slot; snprintf forbids self-copy. */
+    if (key != hud.image_key[index])
+        snprintf(hud.image_key[index], sizeof(hud.image_key[index]), "%s", key ? key : "");
+    if (resolved != hud.image_name[index])
+        snprintf(hud.image_name[index], sizeof(hud.image_name[index]), "%s", resolved ? resolved : "");
     hud.image_decorated[index] = decorate;
 }
 
