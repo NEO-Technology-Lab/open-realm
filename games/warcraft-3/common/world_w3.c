@@ -78,15 +78,17 @@ BOOL CL_GameBuildCursorBlocked(LPCVECTOR3 origin) {
 
 BOOL CL_GameBuildSameTypeSelection(gameSameTypeSelection_t *selection) {
     DWORD count = 0;
+    DWORD class_id;
 
     if (!selection || !Cvar_Integer("cl_same_type_select", 0) || !selection->command ||
         selection->command_size < 2) return false;
+    class_id = cl.ents[selection->anchor].current.class_id;
     snprintf(selection->command, selection->command_size, "select %u sametype", selection->anchor);
     FOR_LOOP(i, selection->visible_count) {
         DWORD const number = selection->visible[i];
         size_t used;
         if (!number || number == selection->anchor || number >= MAX_CLIENT_ENTITIES ||
-            count >= MIN(selection->limit, 61)) continue;
+            cl.ents[number].current.class_id != class_id || count >= MIN(selection->limit, 61)) continue;
         used = strlen(selection->command);
         if (used + 12 >= selection->command_size) break;
         snprintf(selection->command + used, selection->command_size - used, " %u", number);

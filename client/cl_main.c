@@ -468,7 +468,7 @@ void CL_BeginLoadingMap(LPCSTR mapName) {
 void CL_RequestUnitUI(DWORD num_selected, DWORD *entity_nums) {
     (void)num_selected;
     (void)entity_nums;
-    menu.UpdateUnitUI(0, NULL);
+    if (menu.UpdateUnitUI) menu.UpdateUnitUI(0, NULL);
 }
 
 int CL_ModelIndex(LPCSTR modelName) {

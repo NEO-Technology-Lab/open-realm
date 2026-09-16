@@ -1492,7 +1492,7 @@ void G_CompleteConstruction(LPEDICT building) {
     building->aiflags &= ~AI_HOLD_FRAME;
     if (building->build == building) building->build = NULL;
     G_SetHealth(building, building->health.max_value);
-    building->stand(building);
+	if (building->stand) building->stand(building);
 #ifdef WC3_DEBUG_AI
     fprintf(stderr, "WC3_DEBUG_AI construction complete building=%ld id=%.4s player=%u\n",
         (long)(building - g_edicts), (LPCSTR)&building->class_id, building->s.player);

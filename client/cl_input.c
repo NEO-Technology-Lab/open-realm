@@ -421,6 +421,13 @@ static keyCode_t CL_SDLKeyToKeyCode(int sym) {
     return (keyCode_t)sym;
 }
 
+static void CL_InputKeyEvent(keyCode_t key, DWORD mods, BOOL down, DWORD time) {
+    Key_Event(key, mods, down, time);
+    /* SDL may deliver a short press's down and up events in one poll pass;
+     * execute each edge before the next event can cancel held camera state. */
+    Cbuf_Execute();
+}
+
 static DWORD CL_BindMods(SDL_Keymod m) {
     DWORD mods = 0;
     if (m & KMOD_CTRL) mods |= KEY_MOD_CTRL;
@@ -492,12 +499,12 @@ void CL_Input(void) {
         if (movie_input) {
             switch (event.type) {
                 case SDL_KEYDOWN:
-                    Key_Event(CL_SDLKeyToKeyCode(event.key.keysym.sym),
-                              CL_BindMods(event.key.keysym.mod), true, event.key.timestamp);
+                    CL_InputKeyEvent(CL_SDLKeyToKeyCode(event.key.keysym.sym),
+                                     CL_BindMods(event.key.keysym.mod), true, event.key.timestamp);
                     break;
                 case SDL_KEYUP:
-                    Key_Event(CL_SDLKeyToKeyCode(event.key.keysym.sym),
-                              CL_BindMods(event.key.keysym.mod), false, event.key.timestamp);
+                    CL_InputKeyEvent(CL_SDLKeyToKeyCode(event.key.keysym.sym),
+                                     CL_BindMods(event.key.keysym.mod), false, event.key.timestamp);
                     break;
                 case SDL_MOUSEMOTION:
                     mouse.origin.x = event.motion.x;
@@ -519,7 +526,7 @@ void CL_Input(void) {
                     mouse.origin.y = event.button.y;
                     if (mousevt && cls.key_dest != key_console) {
                         mouse_button_keys[event.button.button] = mousevt;
-                        Key_Event(mousevt, CL_BindMods(SDL_GetModState()), true, event.button.timestamp);
+                        CL_InputKeyEvent(mousevt, CL_BindMods(SDL_GetModState()), true, event.button.timestamp);
                     }
                 }
                 break;
@@ -531,7 +538,7 @@ void CL_Input(void) {
                     mouse.origin.x = event.button.x;
                     mouse.origin.y = event.button.y;
                     if (mousevt && cls.key_dest != key_console) {
-                        Key_Event(mousevt, CL_BindMods(SDL_GetModState()), false, event.button.timestamp);
+                        CL_InputKeyEvent(mousevt, CL_BindMods(SDL_GetModState()), false, event.button.timestamp);
                         mouse_button_keys[event.button.button] = 0;
                     }
                 }
@@ -579,14 +586,14 @@ void CL_Input(void) {
                 if (cls.key_dest == key_game && CL_MinimapKeyEvent(event.key.keysym.sym, event.key.repeat != 0)) {
                     break;
                 }
-                Key_Event(CL_SDLKeyToKeyCode(event.key.keysym.sym), CL_BindMods(event.key.keysym.mod), true, event.key.timestamp);
+                CL_InputKeyEvent(CL_SDLKeyToKeyCode(event.key.keysym.sym), CL_BindMods(event.key.keysym.mod), true, event.key.timestamp);
                 break;
             case SDL_KEYUP:
                 if (cls.key_dest == key_console || event.key.keysym.sym == SDLK_BACKQUOTE) {
                     CON_KeyEvent(event.key.keysym.sym, false);
                     break;
                 }
-                Key_Event(CL_SDLKeyToKeyCode(event.key.keysym.sym), CL_BindMods(event.key.keysym.mod), false, event.key.timestamp);
+                CL_InputKeyEvent(CL_SDLKeyToKeyCode(event.key.keysym.sym), CL_BindMods(event.key.keysym.mod), false, event.key.timestamp);
                 break;
             case SDL_MOUSEBUTTONDOWN:
                 mouse.origin.x = event.button.x;
@@ -661,8 +668,8 @@ void CL_Input(void) {
                     wheelkey = event.wheel.y > 0 ? K_MWHEELUP : K_MWHEELDOWN;
                     n = event.wheel.y > 0 ? event.wheel.y : -event.wheel.y;
                     FOR_LOOP(i, n) {
-                        Key_Event(wheelkey, CL_BindMods(SDL_GetModState()), true, event.wheel.timestamp);
-                        Key_Event(wheelkey, CL_BindMods(SDL_GetModState()), false, event.wheel.timestamp);
+                        CL_InputKeyEvent(wheelkey, CL_BindMods(SDL_GetModState()), true, event.wheel.timestamp);
+                        CL_InputKeyEvent(wheelkey, CL_BindMods(SDL_GetModState()), false, event.wheel.timestamp);
                     }
                 }
                 break;
@@ -1132,7 +1139,7 @@ TEST(client_input, quick_arrow_press_is_sampled_before_release) {
     input = (__typeof__(input)){ .focus = true, .last_ms = SDL_GetTicks() - 16 };
     Cvar_SetValue("cl_camera_scroll_speed", 1400);
     SZ_Init(&cls.netchan.message, data, sizeof(data));
-    Key_Event(K_LEFTARROW, 0, true, 0); CL_Input();
+    CL_InputKeyEvent(K_LEFTARROW, 0, true, 0); CL_Input();
     T_ASSERT(cam_west);
     T_STREQ(Key_GetBinding(K_LEFTARROW, 0), "+camwest");
     Cbuf_AddText("-camwest\n"); Cbuf_Execute();

@@ -78,8 +78,24 @@ void CON_printf(LPCSTR fmt, ...) {
 BOOL CL_GameplayInputReady(void) { return false; }
 BOOL CL_MovieKeyEvent(keyCode_t key, bool down) { (void)key; (void)down; return false; }
 BOOL CL_GameBuildSameTypeSelection(gameSameTypeSelection_t *selection) {
-    (void)selection;
-    return false;
+    DWORD count = 0;
+    DWORD class_id;
+
+    if (!selection || !selection->command || selection->command_size < 2 || !selection->visible_count)
+        return false;
+    class_id = cl.ents[selection->anchor].current.class_id;
+    snprintf(selection->command, selection->command_size, "select %u sametype", selection->anchor);
+    FOR_LOOP(i, selection->visible_count) {
+        DWORD const number = selection->visible[i];
+        size_t used;
+        if (!number || number == selection->anchor || number >= MAX_CLIENT_ENTITIES ||
+            cl.ents[number].current.class_id != class_id || count >= MIN(selection->limit, 61)) continue;
+        used = strlen(selection->command);
+        if (used + 12 >= selection->command_size) break;
+        snprintf(selection->command + used, selection->command_size - used, " %u", number);
+        count++;
+    }
+    return true;
 }
 /* Transient-window tests exercise focus without owning a real SDL text-input session. */
 void CL_SetTransientTextInput(BOOL enabled) { (void)enabled; }
