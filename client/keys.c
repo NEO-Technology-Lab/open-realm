@@ -172,4 +172,8 @@ void Key_Event(keyCode_t key, DWORD mods, bool down, DWORD time) {
         Cbuf_AddText(kb);
         Cbuf_AddText("\n");
     }
+    /* Button state must be visible to the same input sample. SDL can deliver
+     * a short press's down and up events in one poll pass; deferring both to
+     * CL_SendCommand lets the release erase the camera-scroll state first. */
+    Cbuf_Execute();
 }

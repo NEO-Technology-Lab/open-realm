@@ -1110,6 +1110,43 @@ static void CL_TestWorldBounds(BOOL set) {
 #endif
 }
 
+TEST(client_input, quick_arrow_press_is_sampled_before_release) {
+    BYTE data[256];
+    struct client_state old_cl = cl;
+    struct client_static old_cls = cls;
+    refExport_t saved = re;
+    __typeof__(input) old_input = input;
+    int old_state = cls.state, old_dest = cls.key_dest, old_ui = cl.playerstate.client_ui_state;
+    FLOAT old_speed = Cvar_Value("cl_camera_scroll_speed", 0);
+    BOOL add_down = !Cmd_Exists("+camwest"), add_up = !Cmd_Exists("-camwest");
+    UINAME old_bind;
+
+    CL_TestWorldBounds(true);
+    if (add_down) Cmd_AddCommand("+camwest", IN_CamWestDown);
+    if (add_up) Cmd_AddCommand("-camwest", IN_CamWestUp);
+    strlcpy(old_bind, Key_GetBinding(K_LEFTARROW, 0), sizeof(old_bind));
+    Key_SetBinding(K_LEFTARROW, 0, "+camwest");
+    re.GetWindowSize = CL_TestWindowSize; re.CameraUsesTerrainHeight = CL_TestCameraUsesTerrainHeight;
+    cls.state = ca_active; cls.key_dest = key_game; cl.playerstate.client_ui_state = CLIENT_UI_GAME;
+    cl.viewDef.camerastate[0].origin = (VECTOR3){0}; cl.viewDef.camerastate[0].viewangles = (VECTOR3){0};
+    input = (__typeof__(input)){ .focus = true, .last_ms = SDL_GetTicks() - 16 };
+    Cvar_SetValue("cl_camera_scroll_speed", 1400);
+    SZ_Init(&cls.netchan.message, data, sizeof(data));
+    Key_Event(K_LEFTARROW, 0, true, 0); CL_Input();
+    T_ASSERT(cam_west);
+    T_STREQ(Key_GetBinding(K_LEFTARROW, 0), "+camwest");
+    Cbuf_AddText("-camwest\n"); Cbuf_Execute();
+    T_ASSERT(!cam_west);
+
+    cl = old_cl; cls = old_cls; re = saved; input = old_input;
+    cls.state = old_state; cls.key_dest = old_dest; cl.playerstate.client_ui_state = old_ui;
+    Cvar_SetValue("cl_camera_scroll_speed", old_speed);
+    if (add_down) Cmd_RemoveCommand("+camwest");
+    if (add_up) Cmd_RemoveCommand("-camwest");
+    Key_SetBinding(K_LEFTARROW, 0, old_bind);
+    CL_TestWorldBounds(false);
+}
+
 /* Minimap focus is shared input: selection capacity cannot change its packet or drag lifecycle. */
 TEST(client_input, minimap_focus_and_release_are_selection_independent) {
     CL_TestWorldBounds(true);
