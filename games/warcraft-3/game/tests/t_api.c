@@ -1869,6 +1869,27 @@ TEST(wc3_api, enable_user_ui_does_not_block_world_selection) {
     currentplayer = NULL;
 }
 
+TEST(wc3_api, same_type_selection_filters_candidates_by_anchor_type) {
+    LPGAMECLIENT gc = &game.clients[0];
+    LPEDICT first = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 64.0f, 64.0f);
+    LPEDICT second = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 96.0f, 64.0f);
+    LPEDICT other = alloc_test_unit(MAKEFOURCC('h','p','e','a'), 128.0f, 64.0f);
+    char first_number[16], second_number[16], other_number[16];
+    LPCSTR command[] = { "select", first_number, "sametype", first_number, second_number, other_number };
+
+    gc->ps.number = 0;
+    first->s.player = second->s.player = other->s.player = 0;
+    first->svflags |= SVF_MONSTER; second->svflags |= SVF_MONSTER; other->svflags |= SVF_MONSTER;
+    snprintf(first_number, sizeof(first_number), "%u", first->s.number);
+    snprintf(second_number, sizeof(second_number), "%u", second->s.number);
+    snprintf(other_number, sizeof(other_number), "%u", other->s.number);
+
+    globals.ClientCommand(&g_edicts[0], 6, command);
+    T_ASSERT(G_IsEntitySelected(gc, first));
+    T_ASSERT(G_IsEntitySelected(gc, second));
+    T_ASSERT(!G_IsEntitySelected(gc, other));
+}
+
 TEST(wc3_api, client_selection_publishes_selection_events_once_per_delta) {
     LPGAMECLIENT gc = &game.clients[0];
     LPEDICT first = alloc_test_unit(MAKEFOURCC('h','p','e','a'), 64.0f, 64.0f);

@@ -13,6 +13,8 @@ static struct {
 } camera_drag;
 
 static BOOL smart_click_active;
+#define BZ_SELECT_DOUBLE_CLICK_MS 500 // milliseconds; shared opt-in same-entity double-click window
+#define BZ_SELECT_SAME_TYPE_CANDIDATES 61 // command tokenizer has 64 tokens; select + anchor + sametype use three
 static BOOL cam_west, cam_east, cam_north, cam_south;
 
 static void CL_ScrollFrame(void);
@@ -21,6 +23,7 @@ static struct {
     DWORD buttons, sent, last_ms;
     BOOL select, look, focus;
     VECTOR2 down, travel;
+    DWORD last_select_entity, last_select_ms;
     SDL_Cursor *arrow, *cross, *hand;
 } input = { .focus = true };
 
@@ -132,6 +135,7 @@ void CL_ResetInput(void) {
     input.buttons = input.sent = 0;
     cl.camera_prediction.active = cl.camera_prediction.view = false;
     input.select = input.look = camera_drag.active = smart_click_active = false;
+    input.last_select_entity = input.last_select_ms = 0;
     cam_west = cam_east = cam_north = cam_south = false;
     cl.selection.in_progress = false;
     cl.hover_entity = 0;
@@ -708,19 +712,70 @@ void CL_SetGameplayBindings(void) {
     cls.netchan.remote_address.type = NA_LOOPBACK;
 }
 
+static void CL_ResetSelectClickChain(void) {
+    input.last_select_entity = 0;
+    input.last_select_ms = 0;
+}
+
+static void CL_SendSameTypeSelection(DWORD anchor) {
+    static DWORD visible[MAX_CLIENT_ENTITIES];
+    DWORD candidates[MAX_SELECTED_ENTITIES] = { 0 };
+    DWORD count = 0;
+    DWORD const candidate_limit = MIN(CL_SelectionLimit(), BZ_SELECT_SAME_TYPE_CANDIDATES);
+    DWORD anchor_class = anchor < MAX_CLIENT_ENTITIES ? cl.ents[anchor].current.class_id : 0;
+    size2_t const window = re.GetWindowSize();
+    RECT const viewport = {
+        .x = cl.viewDef.viewport.x * window.width,
+        .y = (1.0f - (cl.viewDef.viewport.y + cl.viewDef.viewport.h)) * window.height,
+        .w = cl.viewDef.viewport.w * window.width,
+        .h = cl.viewDef.viewport.h * window.height,
+    };
+    DWORD const visible_count = re.EntitiesInRect(&cl.viewDef, &viewport, MAX_CLIENT_ENTITIES, visible);
+    char command[1024];
+
+    /* Snapshot class_id is only a bandwidth/candidate-budget pre-filter. The
+     * game module rechecks the anchor and every candidate authoritatively. */
+    FOR_LOOP(i, visible_count) {
+        DWORD const number = visible[i];
+        if (!number || number == anchor || number >= MAX_CLIENT_ENTITIES) continue;
+        if (anchor_class && cl.ents[number].current.class_id != anchor_class) continue;
+        candidates[count++] = number;
+        if (count >= candidate_limit) break;
+    }
+
+    snprintf(command, sizeof(command), "select %u sametype", anchor);
+    FOR_LOOP(i, count) {
+        size_t const used = strlen(command);
+        snprintf(command + used, sizeof(command) - used, " %u", candidates[i]);
+    }
+    MSG_WriteByte(&cls.netchan.message, clc_stringcmd);
+    SZ_Printf(&cls.netchan.message, "%s", command);
+
+    /* Keep only the clicked unit as a local hint until svc_set_selection
+     * returns the authoritative same-type membership. */
+    cl.selection.num_selected = 1;
+    cl.selection.entity_nums[0] = anchor;
+    CL_RequestUnitUI(1, cl.selection.entity_nums);
+}
+
 void IN_SelectDown(void) {
     input.select = false;
     input.down = mouse.origin;
     if (!CL_GameplayInputReady()) {
+        CL_ResetSelectClickChain();
         cl.selection.in_progress = false;
         return;
     }
     /* Minimap focus precedes world selection and its HUD blocker, regardless of selection capacity. */
     if (CL_TryMinimapClick(mouse.origin.x, mouse.origin.y)) {
+        CL_ResetSelectClickChain();
         cl.selection.in_progress = false;
         return;
     }
-    if (CL_MouseOverGameplayUI()) return;
+    if (CL_MouseOverGameplayUI()) {
+        CL_ResetSelectClickChain();
+        return;
+    }
     input.select = true;
     if (CL_SelectionLimit() == 1) return;
     cl.selection.in_progress = true;
@@ -759,26 +814,48 @@ void IN_SelectUp(void) {
     DWORD entnum;
     VECTOR3 point;
     if (fabs(r.w)+fabs(r.h) < 10) {
-        BOOL const queue = (SDL_GetModState() & (KMOD_LSHIFT | KMOD_RSHIFT)) != 0;
+        SDL_Keymod const mods = SDL_GetModState();
+        BOOL const queue = (mods & (KMOD_LSHIFT | KMOD_RSHIFT)) != 0;
         if (re.TraceEntity(&cl.viewDef, r.x, r.y, &entnum)) {
-            MSG_WriteByte(&cls.netchan.message, clc_stringcmd);
-            SZ_Printf(&cls.netchan.message, queue ? "select %d queue" : "select %d", entnum);
+            BOOL const same_type_enabled = Cvar_Integer("cl_same_type_select", 0) != 0;
+            BOOL const ctrl_same_type = same_type_enabled && !queue &&
+                (mods & (KMOD_LCTRL | KMOD_RCTRL));
+            BOOL const double_click_same_type = same_type_enabled && !queue &&
+                input.last_select_entity == entnum &&
+                (DWORD)(cl.time - input.last_select_ms) < BZ_SELECT_DOUBLE_CLICK_MS;
 
-            /* The game resolves whether this click is command targeting or a
-             * selection change. Keep the local cache as a best-effort hint;
-             * authoritative WC3 selection remains server-owned. */
-            cl.selection.num_selected = 1;
-            cl.selection.entity_nums[0] = entnum;
-            CL_RequestUnitUI(1, cl.selection.entity_nums);
+            if (ctrl_same_type || double_click_same_type) {
+                CL_SendSameTypeSelection(entnum);
+            } else {
+                MSG_WriteByte(&cls.netchan.message, clc_stringcmd);
+                SZ_Printf(&cls.netchan.message, queue ? "select %d queue" : "select %d", entnum);
+
+                /* The game resolves whether this click is command targeting or a
+                 * selection change. Keep the local cache as a best-effort hint;
+                 * authoritative game selection remains server-owned. */
+                cl.selection.num_selected = 1;
+                cl.selection.entity_nums[0] = entnum;
+                CL_RequestUnitUI(1, cl.selection.entity_nums);
+            }
+            if (queue) {
+                CL_ResetSelectClickChain();
+            } else {
+                input.last_select_entity = entnum;
+                input.last_select_ms = cl.time;
+            }
         } else if (re.TraceLocation(&cl.viewDef, r.x, r.y, &point)){
+            CL_ResetSelectClickChain();
             MSG_WriteByte(&cls.netchan.message, clc_stringcmd);
             SZ_Printf(&cls.netchan.message, queue ? "point %d %d queue" : "point %d %d",
                       (int)point.x, (int)point.y);
             if (cl.selection.num_selected) {
                 CL_RequestUnitUI(cl.selection.num_selected, cl.selection.entity_nums);
             }
+        } else {
+            CL_ResetSelectClickChain();
         }
     } else {
+        CL_ResetSelectClickChain();
         DWORD selected[MAX_SELECTED_ENTITIES] = { 0 };
         DWORD num = re.EntitiesInRect(&cl.viewDef, &cl.selection.rect, CL_SelectionLimit(), selected);
         if (num == 0)
@@ -848,6 +925,7 @@ void CL_InitInput(void) {
     Cmd_AddCommand("+moveleft", IN_MoveLeftDown); Cmd_AddCommand("-moveleft", IN_MoveLeftUp);
     Cmd_AddCommand("+moveright", IN_MoveRightDown); Cmd_AddCommand("-moveright", IN_MoveRightUp);
     Cvar_Get("cl_selection_limit", "64", 0);
+    Cvar_Get("cl_same_type_select", "0", 0);
     Cvar_Get("cl_group_focus", "1", 0);
     Cvar_Get("cl_hover_health_only", "1", 0);
     Cvar_Get("cl_context_cursor", "0", 0);
@@ -883,6 +961,9 @@ static bool CL_TestPlane(viewDef_t const *view, float x, float y, LPVECTOR3 poin
 static bool CL_TestSmartEntity(viewDef_t const *view, float x, float y, LPDWORD number) {
     (void)view; (void)x; (void)y; *number = 42; return true;
 }
+static bool CL_TestSelectEntity(viewDef_t const *view, float x, float y, LPDWORD number) {
+    (void)view; (void)x; (void)y; *number = 7; return true;
+}
 static bool CL_TestSmartLocation(viewDef_t const *view, float x, float y, LPVECTOR3 point) {
     (void)view; (void)x; (void)y; *point = (VECTOR3){ 123, 456, 0 }; return true;
 }
@@ -891,6 +972,14 @@ static bool CL_TestNoLocation(viewDef_t const *view, float x, float y, LPVECTOR3
 }
 static bool CL_TestMinimap(float x, float y, LPVECTOR2 point) {
     (void)y; *point = (VECTOR2){ 300, 400 }; return x >= 0 && x <= 100 && y >= 0 && y <= 100;
+}
+static RECT same_type_rect;
+static DWORD CL_TestEntitiesInRect(viewDef_t const *view, LPCRECT rect, DWORD max, LPDWORD array) {
+    (void)view;
+    same_type_rect = *rect;
+    T_ASSERT(max >= 3);
+    array[0] = 7; array[1] = 8; array[2] = 9;
+    return 3;
 }
 static BOOL CL_TestCameraUsesTerrainHeight(void) { return false; }
 static size2_t CL_TestWindowSize(void) { return (size2_t){ 1024, 768 }; }
@@ -904,6 +993,77 @@ static bool CL_TestSmartLocationOrder(viewDef_t const *view, float x, float y, L
 }
 
 /* Exercise the wire command without letting transient input state leak into later suites. */
+
+TEST(client_input, same_type_selection_click_paths_use_visible_matching_candidates) {
+    BYTE data[256];
+    __typeof__(input) old_input = input;
+    __typeof__(cl.selection) old_sel = cl.selection;
+    sizeBuf_t old_msg = cls.netchan.message;
+    refExport_t saved = re;
+    viewDef_t old_view = cl.viewDef;
+    DWORD old_time = cl.time;
+    DWORD old_class[3] = { cl.ents[7].current.class_id, cl.ents[8].current.class_id,
+                           cl.ents[9].current.class_id };
+    int old_state = cls.state, old_dest = cls.key_dest, old_ui = cl.playerstate.client_ui_state;
+    int old_limit = Cvar_Integer("cl_selection_limit", 64);
+    int old_same_type = Cvar_Integer("cl_same_type_select", 0);
+    SDL_Keymod old_mod = SDL_GetModState();
+    char command[128];
+
+    re.TraceEntity = CL_TestSelectEntity; re.EntitiesInRect = CL_TestEntitiesInRect;
+    re.GetWindowSize = CL_TestWindowSize;
+    cls.state = ca_active; cls.key_dest = key_game; cl.playerstate.client_ui_state = CLIENT_UI_GAME;
+    input = (__typeof__(input)){ .focus = true };
+    Cvar_Set("cl_selection_limit", "64"); Cvar_Set("cl_same_type_select", "1");
+    cl.viewDef.viewport = (RECT){ .x = 0.1f, .y = 0.2f, .w = 0.5f, .h = 0.6f };
+    cl.ents[7].current.class_id = 0x11111111u;
+    cl.ents[8].current.class_id = 0x11111111u;
+    cl.ents[9].current.class_id = 0x22222222u;
+
+    /* First ordinary click establishes the double-click anchor. */
+    SDL_SetModState(KMOD_NONE); cl.time = 1000;
+    input.select = true; cl.selection.in_progress = true;
+    cl.selection.rect = (RECT){ .x = 200, .y = 200, .w = 0, .h = 0 };
+    SZ_Init(&cls.netchan.message, data, sizeof(data)); IN_SelectUp();
+    T_EQ(MSG_ReadByte(&cls.netchan.message), clc_stringcmd);
+    MSG_ReadString(&cls.netchan.message, command); T_STREQ(command, "select 7");
+
+    /* A second click inside the 500 ms window expands to same-type units. */
+    cl.time = 1200; input.select = true; cl.selection.in_progress = true;
+    cl.selection.rect = (RECT){ .x = 200, .y = 200, .w = 0, .h = 0 };
+    SZ_Init(&cls.netchan.message, data, sizeof(data)); IN_SelectUp();
+    T_FEQ(same_type_rect.x, 102.4f, 0.01f); T_FEQ(same_type_rect.y, 153.6f, 0.01f);
+    T_FEQ(same_type_rect.w, 512.0f, 0.01f); T_FEQ(same_type_rect.h, 460.8f, 0.01f);
+    T_EQ(MSG_ReadByte(&cls.netchan.message), clc_stringcmd);
+    MSG_ReadString(&cls.netchan.message, command); T_STREQ(command, "select 7 sametype 8");
+
+    /* Ctrl+click takes the same path without needing a previous click. */
+    CL_ResetSelectClickChain(); SDL_SetModState(KMOD_LCTRL); cl.time = 2000;
+    input.select = true; cl.selection.in_progress = true;
+    cl.selection.rect = (RECT){ .x = 200, .y = 200, .w = 0, .h = 0 };
+    SZ_Init(&cls.netchan.message, data, sizeof(data)); IN_SelectUp();
+    T_EQ(MSG_ReadByte(&cls.netchan.message), clc_stringcmd);
+    MSG_ReadString(&cls.netchan.message, command); T_STREQ(command, "select 7 sametype 8");
+    T_EQ(cl.selection.num_selected, 1); T_EQ(cl.selection.entity_nums[0], 7);
+
+    /* Shift keeps its existing queue/toggle path instead of inventing partial
+     * same-type Shift semantics in the shared client. */
+    CL_ResetSelectClickChain(); SDL_SetModState(KMOD_LCTRL | KMOD_LSHIFT); cl.time = 2200;
+    input.select = true; cl.selection.in_progress = true;
+    cl.selection.rect = (RECT){ .x = 200, .y = 200, .w = 0, .h = 0 };
+    SZ_Init(&cls.netchan.message, data, sizeof(data)); IN_SelectUp();
+    T_EQ(MSG_ReadByte(&cls.netchan.message), clc_stringcmd);
+    MSG_ReadString(&cls.netchan.message, command); T_STREQ(command, "select 7 queue");
+    T_EQ(input.last_select_entity, 0);
+
+    input = old_input; cl.selection = old_sel; cl.viewDef = old_view; cl.time = old_time; re = saved;
+    cl.ents[7].current.class_id = old_class[0]; cl.ents[8].current.class_id = old_class[1];
+    cl.ents[9].current.class_id = old_class[2]; cls.netchan.message = old_msg;
+    cls.state = old_state; cls.key_dest = old_dest; cl.playerstate.client_ui_state = old_ui;
+    Cvar_SetValue("cl_selection_limit", old_limit); Cvar_SetValue("cl_same_type_select", old_same_type);
+    SDL_SetModState(old_mod);
+}
+
 TEST(client_input, smart_entity_click_preserves_ground_point) {
     BYTE data[256];
     __typeof__(cl.selection) old_sel = cl.selection;

@@ -537,6 +537,8 @@ CLIENTCOMMAND(Select) {
         }
         BOOL cleared = false;
         BOOL hasunits = false;
+        BOOL const same_type = argc >= 3 && !strcmp(argv[2], "sametype");
+        LPEDICT same_type_anchor = NULL;
         LPEDICT voice = NULL;
         LPEDICT old_selection[WC3_SELECTION_LIMIT] = { 0 };
         DWORD old_count = 0;
@@ -546,10 +548,17 @@ CLIENTCOMMAND(Select) {
             if (old_count >= WC3_SELECTION_LIMIT) break;
             old_selection[old_count++] = selected;
         }
+        if (same_type) {
+            DWORD anchor_number;
+            if (!G_ParseEntityNumber(argv[1], &anchor_number)) return;
+            same_type_anchor = &globals.edicts[anchor_number];
+            if (!G_UnitCanBeSelected(client, same_type_anchor)) return;
+        }
         for (DWORD i = 1; i < argc; i++) {
             DWORD number;
             if (!G_ParseEntityNumber(argv[i], &number)) continue;
             LPEDICT e = &globals.edicts[number];
+            if (same_type && e->class_id != same_type_anchor->class_id) continue;
             if (G_UnitCanBeSelected(client, e) && G_UnitCanControl(client, e) &&
                 !G_UnitIsBuilding(e->class_id)) {
                 hasunits = true;
@@ -559,6 +568,7 @@ CLIENTCOMMAND(Select) {
             DWORD number;
             if (!G_ParseEntityNumber(argv[i], &number)) continue;
             LPEDICT e = &globals.edicts[number];
+            if (same_type && e->class_id != same_type_anchor->class_id) continue;
             if (G_UnitCanBeSelected(client, e)) {
                 if (hasunits && (!G_UnitCanControl(client, e) || G_UnitIsBuilding(e->class_id)))
                     continue;
