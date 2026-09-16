@@ -270,13 +270,14 @@ Do not bypass these gaps by weakening `G_UnitCanControl` or by restoring owner c
 
 ## Verification
 
-In-engine coverage is in `games/warcraft-3/game/tests/t_api.c` and `t_unit.c` for relationship classification, visible foreign selectability, shared-control authority, dead-unit non-selectability, selection removal, Hero revival restoring selectability, selection/deselection JASS event deltas, and Warsmash priority/level/canonical-rawcode multiselect ordering. `t_items.c` additionally covers mixed-selection Smart item pickup with a non-inventory unit first in the selection.
+In-engine coverage is in `games/warcraft-3/game/tests/t_api.c` and `t_unit.c` for relationship classification, visible foreign selectability, shared-control authority, dead-unit non-selectability, selection removal, Hero revival restoring selectability, selection/deselection JASS event deltas, and Warsmash priority/level/canonical-rawcode multiselect ordering. `t_items.c` additionally covers mixed-selection Smart item pickup with a non-inventory unit first in the selection. `t_spell.c` covers the cross-system multiselect target path directly: with Arthas and a Footman selected, a `focus <entity>` portrait click while Holy Light is armed targets the clicked portrait without changing focused subgroup or selection membership; an invalid self portrait leaves the spell armed, while a valid Footman portrait heals and exits target mode.
 
 Useful targeted commands after building the test binary:
 
 ```bash
 make test-wc3-engine WC3_PATTERN='wc3_api.*'
 make test-wc3-engine WC3_PATTERN='wc3_unit.*'
+make test-wc3-engine WC3_PATTERN='wc3_spell.holy_light_multiselect_portrait_targets_without_changing_focus'
 ```
 
 Runtime verification should also cover an enemy walking from visible terrain into fog, Neutral Passive/Hostile circle colours, and attempting Smart/command-card orders while a foreign unit is selected.
