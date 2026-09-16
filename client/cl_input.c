@@ -14,7 +14,6 @@ static struct {
 
 static BOOL smart_click_active;
 #define BZ_SELECT_DOUBLE_CLICK_MS 500 // milliseconds; shared opt-in same-entity double-click window
-#define BZ_SELECT_SAME_TYPE_CANDIDATES 61 // command tokenizer has 64 tokens; select + anchor + sametype use three
 static BOOL cam_west, cam_east, cam_north, cam_south;
 
 static void CL_ScrollFrame(void);
@@ -719,10 +718,6 @@ static void CL_ResetSelectClickChain(void) {
 
 static void CL_SendSameTypeSelection(DWORD anchor) {
     static DWORD visible[MAX_CLIENT_ENTITIES];
-    DWORD candidates[MAX_SELECTED_ENTITIES] = { 0 };
-    DWORD count = 0;
-    DWORD const candidate_limit = MIN(CL_SelectionLimit(), BZ_SELECT_SAME_TYPE_CANDIDATES);
-    DWORD anchor_class = anchor < MAX_CLIENT_ENTITIES ? cl.ents[anchor].current.class_id : 0;
     size2_t const window = re.GetWindowSize();
     RECT const viewport = {
         .x = cl.viewDef.viewport.x * window.width,
@@ -733,21 +728,9 @@ static void CL_SendSameTypeSelection(DWORD anchor) {
     DWORD const visible_count = re.EntitiesInRect(&cl.viewDef, &viewport, MAX_CLIENT_ENTITIES, visible);
     char command[1024];
 
-    /* Snapshot class_id is only a bandwidth/candidate-budget pre-filter. The
-     * game module rechecks the anchor and every candidate authoritatively. */
-    FOR_LOOP(i, visible_count) {
-        DWORD const number = visible[i];
-        if (!number || number == anchor || number >= MAX_CLIENT_ENTITIES) continue;
-        if (anchor_class && cl.ents[number].current.class_id != anchor_class) continue;
-        candidates[count++] = number;
-        if (count >= candidate_limit) break;
-    }
-
-    snprintf(command, sizeof(command), "select %u sametype", anchor);
-    FOR_LOOP(i, count) {
-        size_t const used = strlen(command);
-        snprintf(command + used, sizeof(command) - used, " %u", candidates[i]);
-    }
+    if (!CL_GameBuildSameTypeSelection(&(gameSameTypeSelection_t){
+            .anchor = anchor, .visible = visible, .visible_count = visible_count,
+            .limit = CL_SelectionLimit(), .command = command, .command_size = sizeof(command) })) return;
     MSG_WriteByte(&cls.netchan.message, clc_stringcmd);
     SZ_Printf(&cls.netchan.message, "%s", command);
 

@@ -77,6 +77,10 @@ void CON_printf(LPCSTR fmt, ...) {
 }
 BOOL CL_GameplayInputReady(void) { return false; }
 BOOL CL_MovieKeyEvent(keyCode_t key, bool down) { (void)key; (void)down; return false; }
+BOOL CL_GameBuildSameTypeSelection(gameSameTypeSelection_t *selection) {
+    (void)selection;
+    return false;
+}
 /* Transient-window tests exercise focus without owning a real SDL text-input session. */
 void CL_SetTransientTextInput(BOOL enabled) { (void)enabled; }
 

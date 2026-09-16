@@ -140,7 +140,7 @@ DWORD ShowUnit(LPJASS j) {
         /* Visibility is part of both Hero-shortcut and idle-worker eligibility.
          * Rebuild only on a real transition; the shared hook cheaply rejects
          * ordinary non-Hero/non-worker units. */
-        G_InvalidateUnitShortcutsForUnit(whichUnit);
+        G_InvalidateUnitShortcuts(G_GetPlayerClientByNumber(whichUnit->s.player));
     }
     return 0;
 }
