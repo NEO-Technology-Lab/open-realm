@@ -506,11 +506,10 @@ TEST(wc3_destructable, human06_bridge_fixtures_cross_from_both_sides) {
         FOR_LOOP(instance, fixture->count) {
             BYTE cells[64 * 64];
             human06_bridge_pathtex_t pathtex = make_human06_bridge_pathtex(fixture);
-            VECTOR2 axis = fixture->axis == BRIDGE_X ? MAKE(VECTOR2, 1.0f, 0.0f) :
-                fixture->axis == BRIDGE_Y ? MAKE(VECTOR2, 0.0f, 1.0f) : MAKE(VECTOR2, 1.0f, -1.0f);
+            VECTOR2 axis = fixture->axis == BRIDGE_X ? MAKE(VECTOR2, 0.0f, 1.0f) :
+                fixture->axis == BRIDGE_Y ? MAKE(VECTOR2, 1.0f, 0.0f) : MAKE(VECTOR2, 1.0f, -1.0f);
             FLOAT const extent = fixture->axis == BRIDGE_DIAGONAL ? 192.0f : 320.0f;
-            VECTOR2 from = fixture->axis == BRIDGE_DIAGONAL ? MAKE(VECTOR2, -192.0f, 320.0f) :
-                MAKE(VECTOR2, -extent * axis.x, -extent * axis.y);
+            VECTOR2 from = MAKE(VECTOR2, -extent * axis.x, -extent * axis.y);
             VECTOR2 to = fixture->axis == BRIDGE_DIAGONAL ? MAKE(VECTOR2, 320.0f, -192.0f) :
                 MAKE(VECTOR2, extent * axis.x, extent * axis.y);
             LPEDICT bridge, goal;
