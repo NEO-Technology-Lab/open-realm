@@ -38,8 +38,9 @@ static BOOL G_UnitHasWorkerShortcutCapability(LPCEDICT ent) {
 
 BOOL G_UnitShowsHeroShortcut(LPGAMECLIENT client, LPCEDICT ent) {
     return G_ShortcutIsControlledMonster(client, ent) && ent->data.UnitBalance &&
-        ent->data.UnitUI && !ent->training && !ent->data.UnitUI->hideHeroBar &&
-        !(ent->aiflags & AI_ILLUSION) && G_UnitIsHero(ent);
+        ent->data.UnitUI && !ent->training && !(ent->s.renderfx & RF_HIDDEN) &&
+        !ent->data.UnitUI->hideHeroBar && !(ent->aiflags & AI_ILLUSION) &&
+        G_UnitIsHero(ent);
 }
 
 BOOL G_UnitIsIdleWorker(LPCEDICT ent) {

@@ -3093,6 +3093,39 @@ TEST(wc3_api, unit_hidden_clear) {
     T_ASSERT(!(ent->s.renderfx & RF_HIDDEN));
 }
 
+TEST(wc3_api, show_unit_visibility_transition_invalidates_hero_shortcuts) {
+    LPGAMECLIENT client = &game.clients[0];
+    LPEDICT hero = NULL;
+
+    reset_entities();
+    setup_test_world();
+    client->ps.number = 0;
+
+    T_ASSERT(run_test_jass(
+        "globals\n"
+        "  unit testHero\n"
+        "endglobals\n"
+        "function hideHero takes nothing returns nothing\n"
+        "  call ShowUnit(testHero, false)\n"
+        "endfunction\n"
+        "function main takes nothing returns nothing\n"
+        "  set testHero = CreateUnit(Player(0), 'Hpal', 64.0, 64.0, 0.0)\n"
+        "endfunction\n"));
+
+    FOR_LOOP(i, globals.num_edicts)
+        if (g_edicts[i].class_id == MAKEFOURCC('H','p','a','l') && g_edicts[i].s.player == 0) hero = &g_edicts[i];
+    T_NOT_NULL(hero);
+    T_ASSERT(!(hero->s.renderfx & RF_HIDDEN));
+
+    client->shortcuts.dirty = false;
+    jass_callbyname(level.vm, "hideHero", true);
+    jass_runevents(level.vm);
+
+    T_ASSERT(hero->s.renderfx & RF_HIDDEN);
+    T_ASSERT(client->shortcuts.dirty);
+}
+
+
 /* =========================================================================
  * Group — FirstOfGroup / IsUnitInGroup
  * ========================================================================= */
