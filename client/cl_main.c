@@ -31,6 +31,11 @@ struct client_state cl;
 #define CL_TIMEOUT_MSEC 10000
 #define CL_LOADING_PUMP_MSEC 16 // milliseconds; one 60 Hz platform pump; bounds checkpoint overhead during loading
 
+typedef struct { LPCSTR name; xcommand_t call; } clMenuCommand_t;
+static clMenuCommand_t cl_menu_commands[128];
+typedef enum { CL_MENU_UNLOADED, CL_MENU_READY, CL_MENU_SUSPENDED } clMenuLife_t;
+static clMenuLife_t cl_menu_life;
+
 static DWORD cl_last_packet_time = 0;
 static DWORD cl_realtime = 0;
 
@@ -121,6 +126,42 @@ static BOOL CL_LANServer(DWORD index, menuLanGame_t *out);
 static void CL_LANConnectServer(DWORD index);
 static LPRENDERER CL_UIGetRenderer(void);
 
+static void CL_SuspendMenu(void) {
+    if (cl_menu_life != CL_MENU_READY) return;
+    menu.Shutdown();
+    cl_menu_life = CL_MENU_SUSPENDED;
+}
+
+static void CL_ResumeMenu(void) {
+    if (cl_menu_life != CL_MENU_SUSPENDED) return;
+    menu.Init();
+    cl_menu_life = CL_MENU_READY;
+}
+
+static void CL_RunMenuCommand(void) {
+    if (!CL_MenuActive()) {
+        fprintf(stderr, "Menu command %s rejected while a world owns presentation\n", Cmd_Argv(0));
+        return;
+    }
+    FOR_LOOP(i, sizeof(cl_menu_commands) / sizeof(cl_menu_commands[0])) {
+        if (cl_menu_commands[i].name && !strcmp(cl_menu_commands[i].name, Cmd_Argv(0))) {
+            cl_menu_commands[i].call();
+            return;
+        }
+    }
+}
+
+static void CL_AddMenuCommand(LPCSTR name, xcommand_t call) {
+    FOR_LOOP(i, sizeof(cl_menu_commands) / sizeof(cl_menu_commands[0])) {
+        clMenuCommand_t *cmd = &cl_menu_commands[i];
+        if (cmd->name && strcmp(cmd->name, name)) continue;
+        if (!cmd->name) Cmd_AddCommand(name, CL_RunMenuCommand);
+        *cmd = (clMenuCommand_t){ .name = name, .call = call };
+        return;
+    }
+    Com_Error(ERR_FATAL, "Too many main-menu commands");
+}
+
 static void CL_MenuCommand(LPCSTR command) {
     if (!command || !*command) {
         return;
@@ -152,6 +193,8 @@ static void CL_DisconnectInternal(LPCSTR reason, BOOL notify, BOOL queue_menu) {
     if (!queue_menu) {
         return;
     }
+    Cvar_Set("map", "");
+    CL_ResumeMenu();
     if (notify) {
         CL_MenuCommand("menu_disconnected");
     } else {
@@ -444,6 +487,8 @@ void CL_SetLoadingProgress(FLOAT progress) {
 }
 
 void CL_BeginLoadingMap(LPCSTR mapName) {
+    /* Release glue-owned caches before the renderer registers a different world. */
+    CL_SuspendMenu();
     /* Per-map input conveniences must never retain entity numbers into the
      * next world, where those numbers may refer to unrelated entities. */
     CL_ResetInput();
@@ -457,18 +502,11 @@ void CL_BeginLoadingMap(LPCSTR mapName) {
     cl.precache_ready = false;
     cl.playerstate.client_ui_state = CLIENT_UI_LOADING;
     cls.state = ca_connected;
-    CL_MenuCommand("menu_ingame");
+    CL_SetGameplayInput();
     SCR_BeginLoadingPlaque();
     /* New map baselines repopulate the compact active-entity list; drop any
      * stale entries from the previous map before they arrive. */
     cl.num_active = 0;
-}
-
-/* Public wrapper for UI library and input system (Phase 8.6) */
-void CL_RequestUnitUI(DWORD num_selected, DWORD *entity_nums) {
-    (void)num_selected;
-    (void)entity_nums;
-    if (menu.UpdateUnitUI) menu.UpdateUnitUI(0, NULL);
 }
 
 int CL_ModelIndex(LPCSTR modelName) {
@@ -499,10 +537,6 @@ int CL_ImageIndex(LPCSTR imageName) {
         }
     }
     return 0;
-}
-
-LPCSTR CL_ResolveImagePath(LPCSTR imageName) {
-    return menu.ResolveImagePath ? menu.ResolveImagePath(imageName) : imageName;
 }
 
 int CL_FontIndex(LPCSTR fontName, DWORD fontSize) {
@@ -545,9 +579,9 @@ static LPCSTR CL_RebuildMenuTarget(LPCSTR target) {
 
 static void CL_RebuildMenu(LPCSTR target) {
     Cvar_Set("map", "");
-    menu.Shutdown();
+    CL_SuspendMenu();
     re.RegisterMap(NULL);
-    menu.Init();
+    CL_ResumeMenu();
 
     /* M_Init deliberately installs no disconnected glue screen.  Every
      * rebuild therefore has to select its destination explicitly, including
@@ -692,6 +726,25 @@ TEST(client_loading, progress_is_clamped_and_monotonic) {
     cls.disable_screen = saved_disable_screen;
 }
 
+static DWORD cl_test_menu_calls;
+static void CL_TestMenuCommand(void) { cl_test_menu_calls++; }
+TEST(client_session, menu_commands_cannot_enter_loading_or_active_world) {
+    connstate_t state = cls.state;
+    DWORD ui = cl.playerstate.client_ui_state;
+    CL_AddMenuCommand("test_menu_boundary", CL_TestMenuCommand); cl_test_menu_calls = 0;
+    cls.state = ca_active; cl.playerstate.client_ui_state = CLIENT_UI_GAME;
+    Cmd_ExecuteString("test_menu_boundary"); T_EQ(cl_test_menu_calls, 0);
+    cls.state = ca_connected; cl.playerstate.client_ui_state = CLIENT_UI_LOADING;
+    Cmd_ExecuteString("test_menu_boundary"); T_EQ(cl_test_menu_calls, 0);
+    cls.state = ca_disconnected; cl.playerstate.client_ui_state = CLIENT_UI_GAME;
+    Cmd_ExecuteString("test_menu_boundary"); T_EQ(cl_test_menu_calls, 1);
+    Cmd_RemoveCommand("test_menu_boundary");
+    FOR_LOOP(i, sizeof(cl_menu_commands) / sizeof(cl_menu_commands[0]))
+        if (cl_menu_commands[i].name && !strcmp(cl_menu_commands[i].name, "test_menu_boundary"))
+            cl_menu_commands[i] = (clMenuCommand_t){0};
+    cls.state = state; cl.playerstate.client_ui_state = ui;
+}
+
 TEST(client_session, menu_action_map_is_deferred_until_client_frame) {
     memset(&cl_pending_menu_action, 0, sizeof(cl_pending_menu_action));
 
@@ -749,6 +802,29 @@ static void CL_TestRegisterMap(LPCSTR map) {
     cl_test_register_map_was_null = map == NULL;
 }
 
+TEST(client_session, menu_resources_suspend_once_and_resume_once) {
+    clMenuLife_t old_life = cl_menu_life;
+    struct client_state *old_cl = MemAlloc(sizeof(cl));
+    struct client_static old_cls = cls;
+    PATHSTR old_map;
+    memcpy(old_cl, &cl, sizeof(cl)); memset(&cl, 0, sizeof(cl));
+    snprintf(old_map, sizeof(old_map), "%s", Cvar_String("map", ""));
+    cls.state = ca_disconnected; cls.disable_screen = 1;
+    menuExport_t old_menu = menu;
+    menu.Shutdown = CL_TestMenuShutdown; menu.Init = CL_TestMenuInit;
+    cl_test_menu_shutdown_count = cl_test_menu_init_count = 0;
+    cl_menu_life = CL_MENU_UNLOADED;
+    CL_SuspendMenu(); CL_ResumeMenu();
+    T_EQ(cl_test_menu_shutdown_count, 0); T_EQ(cl_test_menu_init_count, 0);
+    cl_menu_life = CL_MENU_READY;
+    CL_BeginLoadingMap("test.map"); CL_BeginLoadingMap("test.map");
+    T_EQ(cl_test_menu_shutdown_count, 1); T_EQ(cl_menu_life, CL_MENU_SUSPENDED);
+    CL_ResumeMenu(); CL_ResumeMenu();
+    T_EQ(cl_test_menu_init_count, 1); T_EQ(cl_menu_life, CL_MENU_READY);
+    menu = old_menu; cl_menu_life = old_life;
+    memcpy(&cl, old_cl, sizeof(cl)); MemFree(old_cl); cls = old_cls; Cvar_Set("map", old_map);
+}
+
 TEST(client_session, menu_rebuild_defaults_to_main_menu_target) {
     T_STREQ(CL_RebuildMenuTarget(NULL), "menu_main");
     T_STREQ(CL_RebuildMenuTarget(""), "menu_main");
@@ -758,6 +834,8 @@ TEST(client_session, menu_rebuild_defaults_to_main_menu_target) {
 }
 
 TEST(client_session, menu_rebuild_clears_world_scope_before_returning_to_menu) {
+    clMenuLife_t old_life = cl_menu_life;
+    cl_menu_life = CL_MENU_READY;
     void (*old_shutdown)(void) = menu.Shutdown;
     void (*old_init)(void) = menu.Init;
     void (*old_register_map)(LPCSTR) = re.RegisterMap;
@@ -779,6 +857,7 @@ TEST(client_session, menu_rebuild_clears_world_scope_before_returning_to_menu) {
     T_ASSERT(cl_test_register_map_was_null);
     T_EQ(cl_test_menu_init_count, 1);
 
+    cl_menu_life = old_life;
     menu.Shutdown = old_shutdown;
     menu.Init = old_init;
     re.RegisterMap = old_register_map;
@@ -826,7 +905,7 @@ void CL_Init(void) {
         .ImageIndex = CL_ImageIndex,
         .ModelIndex = CL_ModelIndex,
         .FontIndex = CL_FontIndex,
-        .Cmd_AddCommand = Cmd_AddCommand,
+        .Cmd_AddCommand = CL_AddMenuCommand,
         .Cmd_Argc = Cmd_Argc,
         .Cmd_Argv = Cmd_Argv,
         .Cmd_ArgsFrom = Cmd_ArgsFrom,
@@ -846,7 +925,8 @@ void CL_Init(void) {
         .PlayMovie = CL_PlayMovie,
     });
     
-    menu.Init();
+    cl_menu_life = CL_MENU_SUSPENDED;
+    CL_ResumeMenu();
 
     SZ_Init(&cls.netchan.message, cls.netchan.message_buf, MAX_MSGLEN);
     
@@ -1029,7 +1109,8 @@ void CL_Connect(LPCSTR host, unsigned short port) {
 }
 
 void CL_Shutdown(void) {
-    menu.Shutdown();
+    CL_SuspendMenu();
+    cl_menu_life = CL_MENU_UNLOADED;
     FOR_LOOP(modelIndex, MAX_MODELS) {
         SAFE_DELETE(cl.models[modelIndex], re.ReleaseModel);
         SAFE_DELETE(cl.portraits[modelIndex], re.ReleaseModel);

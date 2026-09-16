@@ -296,6 +296,29 @@ TEST(net, no_refresh_preserves_client_loop_without_screen_submission) {
     scr_initialized = false;
 }
 
+static DWORD test_menu_draws, test_menu_keys;
+static void capture_menu_key(int key, BOOL down, DWORD time) { (void)key; (void)down; (void)time; test_menu_keys++; }
+static void capture_menu_refresh(DWORD time) { (void)time; test_menu_draws++; }
+
+TEST(net, active_game_never_draws_main_menu) {
+    test_client_stubs_init(); test_client_stubs_clear_cvars();
+    re.BeginFrame = capture_begin_frame; re.EndFrame = capture_end_frame;
+    menu.Refresh = capture_menu_refresh; menu.KeyEvent = capture_menu_key; test_menu_draws = test_menu_keys = 0;
+    cls.state = ca_active; cls.key_dest = key_menu; scr_initialized = true;
+    test_client_stubs_set_cvar("r_hud", "0");
+    SCR_UpdateScreen(16);
+    T_EQ(test_menu_draws, 0);
+    Key_Event(K_F12, 0, true, 16); T_EQ(test_menu_keys, 0);
+    cls.state = ca_connected; cl.playerstate.client_ui_state = CLIENT_UI_LOADING;
+    T_ASSERT(!CL_MenuActive());
+    Key_Event(K_F12, 0, true, 16); T_EQ(test_menu_keys, 0);
+    cls.state = ca_disconnected; cl.playerstate.client_ui_state = CLIENT_UI_GAME;
+    Key_Event(K_F12, 0, true, 16); T_EQ(test_menu_keys, 1);
+    SCR_UpdateScreen(16);
+    T_EQ(test_menu_draws, 1);
+    scr_initialized = false;
+}
+
 TEST(net, paused_scene_time_reuses_cached_world_without_effect_delta) {
     viewDef_t view = { .time = 1000, .deltaTime = 16 };
     DWORD last = 1000;
@@ -1483,26 +1506,11 @@ TEST(net, empty_layout_clears_layer) {
     T_NULL(cl.layout[LAYER_QUESTDIALOG]);
 }
 
-static menuUnitData_t test_unit_ui_last;
-static DWORD test_unit_ui_calls;
-static DWORD test_unit_ui_num_units;
-
-static void test_update_unit_ui(DWORD num_units, menuUnitData_t *units) {
-    test_unit_ui_calls++;
-    test_unit_ui_num_units = num_units;
-    memset(&test_unit_ui_last, 0, sizeof(test_unit_ui_last));
-    if (num_units && units) {
-        test_unit_ui_last = units[0];
-    }
-}
-
 TEST(net, set_selection_accepts_authoritative_multi_selection) {
     BYTE buf[128];
     sizeBuf_t sb = make_msg_buf(buf, sizeof(buf));
 
     test_client_stubs_init();
-    test_unit_ui_calls = 0;
-    menu.UpdateUnitUI = test_update_unit_ui;
     cl.selection.num_selected = 1;
     cl.selection.entity_nums[0] = 99;
 
@@ -1518,7 +1526,6 @@ TEST(net, set_selection_accepts_authoritative_multi_selection) {
     T_EQ(cl.selection.entity_nums[0], 4);
     T_EQ(cl.selection.entity_nums[1], 7);
     T_EQ(cl.selection.entity_nums[2], 11);
-    T_EQ(test_unit_ui_calls, 1);
 }
 
 TEST(net, set_selection_empty_clears_client_cache) {
@@ -1526,8 +1533,6 @@ TEST(net, set_selection_empty_clears_client_cache) {
     sizeBuf_t sb = make_msg_buf(buf, sizeof(buf));
 
     test_client_stubs_init();
-    test_unit_ui_calls = 0;
-    menu.UpdateUnitUI = test_update_unit_ui;
     cl.selection.num_selected = 2;
     cl.selection.entity_nums[0] = 4;
     cl.selection.entity_nums[1] = 7;
@@ -1538,18 +1543,13 @@ TEST(net, set_selection_empty_clears_client_cache) {
     CL_ParseServerMessage(&sb);
 
     T_EQ(cl.selection.num_selected, 0);
-    T_EQ(test_unit_ui_calls, 1);
 }
 
-TEST(net, unit_ui_parser_preserves_distinct_strings) {
+TEST(net, legacy_unit_ui_consumes_payload_without_menu) {
     BYTE buf[512];
     sizeBuf_t sb = make_msg_buf(buf, sizeof(buf));
 
     test_client_stubs_init();
-    test_unit_ui_calls = 0;
-    test_unit_ui_num_units = 0;
-    memset(&test_unit_ui_last, 0, sizeof(test_unit_ui_last));
-    menu.UpdateUnitUI = test_update_unit_ui;
 
     MSG_WriteByte(&sb, 1);
     MSG_WriteShort(&sb, 7);
@@ -1568,19 +1568,8 @@ TEST(net, unit_ui_parser_preserves_distinct_strings) {
     sb.readcount = 0;
 
     CL_ParseUnitUI(&sb);
+    T_EQ(sb.readcount, sb.cursize);
 
-    T_EQ((int)test_unit_ui_calls, 1);
-    T_EQ((int)test_unit_ui_num_units, 1);
-    T_EQ((int)test_unit_ui_last.entity_num, 7);
-    T_STREQ(test_unit_ui_last.buttons[0].art, "Interface\\Icons\\Ability_Warrior_Cleave.blp");
-    T_STREQ(test_unit_ui_last.buttons[0].tooltip, "Attack");
-    T_STREQ(test_unit_ui_last.buttons[0].ubertip, "1");
-    T_STREQ(test_unit_ui_last.buttons[0].command, "wow_action 0");
-    T_EQ(test_unit_ui_last.buttons[0].hotkey, '1');
-    T_STREQ(test_unit_ui_last.inventory[0].art, "Interface\\Icons\\INV_Misc_Bag_08.blp");
-    T_STREQ(test_unit_ui_last.inventory[0].tooltip, "Backpack");
-    T_STREQ(test_unit_ui_last.inventory[0].ubertip, "2");
-    T_EQ(test_unit_ui_last.inventory[0].slot, 4);
 }
 
 static void reset_fow_client_state(void) {

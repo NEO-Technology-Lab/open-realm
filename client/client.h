@@ -15,7 +15,6 @@
 #define MAX_CONSOLE_MESSAGE_LEN 1024
 #define VIEW_SHADOW_SIZE 1500
 #define MAX_CONFIRMATION_OBJECTS 16
-#define MAX_LAYOUT_LAYERS 16
 #define MAX_CONTROL_GROUPS 10 // groups; numbered 0-9; stored in cl.groups
 
 typedef struct {
@@ -179,7 +178,6 @@ void CL_MovieUpdate(void);
 void CL_MovieDraw(void);
 BOOL CL_MovieKeyEvent(keyCode_t key, bool down);
 void CL_MovieShutdown(void);
-void CL_RequestUnitUI(DWORD num_selected, DWORD *entity_nums);
 VECTOR2 CL_ClampCameraPosition(VECTOR2 position);
 void CL_PredictCameraPosition(VECTOR2 position);
 
@@ -304,7 +302,6 @@ void CL_ClearTEnts(void);
 // cl_main.c - UI integration
 int CL_ModelIndex(LPCSTR modelName);
 int CL_ImageIndex(LPCSTR imageName);
-LPCSTR CL_ResolveImagePath(LPCSTR imageName);
 int CL_FontIndex(LPCSTR fontName, DWORD fontSize);
 void CL_UIMenuCommand(LPCSTR command);
 
@@ -320,5 +317,8 @@ extern refExport_t re;
 extern menuExport_t menu;
 extern mouseEvent_t mouse;
 extern BOOL scr_initialized;
+
+/* Loading and active worlds own presentation independently of keyboard focus. */
+static inline BOOL CL_MenuActive(void) { return cls.state != ca_active && cl.playerstate.client_ui_state != CLIENT_UI_LOADING; }
 
 #endif

@@ -283,6 +283,31 @@ static void building_restore_repair_data(slkTestData_t *old, slkTestData_t *rows
     free_slk_rows(rows);
 }
 
+TEST(wc3_building, hud_texture_paths_are_authored_per_recipient) {
+    stbIniCache_t old = game.config.theme, custom = {0};
+    LPGAMECLIENT previous = ui_current_client;
+    GAMECLIENT client = { .ps.race = kPlayerRaceHuman };
+    int (*old_index)(LPCSTR) = gi.ImageIndex;
+    PATHSTR old_key, old_name;
+    BOOL old_dec = hud.image_decorated[1];
+    strcpy(old_key, hud.image_key[1]); strcpy(old_name, hud.image_name[1]);
+    T_ASSERT(Stb_IniCacheLoad(&custom, "TestData\\HudSkin.txt"));
+    game.config.theme = custom; gi.ImageIndex = building_test_image_index;
+    hud.image_key[1][0] = 0; UI_SetCurrentClient(&client);
+    DWORD image = UI_LoadTexture("Background", true);
+    T_STREQ(building_image_path, "Human.blp");
+    T_EQ(UI_LiveImage(image), 1); T_STREQ(building_image_path, "Human.blp");
+    client.ps.race = kPlayerRaceOrc;
+    T_EQ(UI_LiveImage(image), 1); T_STREQ(building_image_path, "Orc.blp");
+    UI_SetCurrentClient(NULL);
+    T_EQ(UI_LiveImage(image), 1); T_STREQ(building_image_path, "Default.blp");
+    T_STREQ(UI_ThemeImagePath("ConsoleTexture05"), "Custom05.blp");
+    T_STREQ(UI_ThemeImagePath("ConsoleTexture06"), "Custom06.blp");
+    T_STREQ(UI_ThemeImagePath("UI\\Textures\\fixed.blp"), "UI\\Textures\\fixed.blp");
+    strcpy(hud.image_key[1], old_key); strcpy(hud.image_name[1], old_name); hud.image_decorated[1] = old_dec;
+    UI_SetCurrentClient(previous); gi.ImageIndex = old_index; game.config.theme = old; Stb_IniCacheFree(&custom);
+}
+
 TEST(wc3_building, player_tech_state_tracks_max_and_researched_levels) {
     LPGAMECLIENT client = &game.clients[0];
     DWORD const barracks = MAKEFOURCC('h','b','a','r');

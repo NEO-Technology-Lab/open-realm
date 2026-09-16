@@ -54,14 +54,6 @@ typedef struct {
     LPCFONT font;
 } uiWowFont_t;
 
-typedef struct {
-    DWORD image;
-    DWORD count;
-    DWORD slot;
-    char art[256];
-    char name[256];
-} uiWowIcon_t;
-
 typedef struct WOWXMLPOINT {
     LPCSTR point, rel, rel_point;
     FLOAT x, y;
@@ -72,13 +64,10 @@ typedef const struct WOWXMLPOINT *LPCWOWXMLPOINT;
 typedef struct {
     LPRENDERER renderer;
     lua_State *lua;
-    BOOL game_mode;
     DWORD warn_once_mask;
     uiWowTexture_t tex_cache[WOW_UI_MAX_TEXTURES];
     DWORD texture_recycle_index;
     uiWowFont_t font_cache[WOW_UI_MAX_FONTS];
-    uiWowIcon_t inventory[WOW_UI_INVENTORY_SLOTS];
-    uiWowIcon_t actions[WOW_UI_ACTION_SLOTS];
     LPTEXTURE textures[WOW_UI_TEX_COUNT];
     PATHSTR active_map;
     PATHSTR current_menu;
@@ -92,8 +81,6 @@ typedef struct {
 } uiWowState_t;
 
 extern menuImport_t mi;
-extern LPCPLAYER wow_player;
-void UIWow_UpdatePlayerState(LPCPLAYER state);
 extern uiWowState_t wow_ui;
 
 /* menu_lua.c */
@@ -139,18 +126,9 @@ void UIWow_XMLInvalidateCharCustomizeModel(void);
 void UIWow_XmlSetFrameModel(int idx, LPCSTR model_path);
 
 /* menu_loading.c */
-void UIWow_UpdateMapBackground(LPCPLAYER ps);
 void UIWow_DrawLoadingScreenC(LPCSTR map, LPCSTR status, FLOAT progress);
 
-/* menu_windows.c */
-void UIWow_ShowWindow(const char *window_id, int show);
-void UIWow_DrawWindows(void);
-BOOL UIWow_WindowMouseDown(float nx, float ny);
-BOOL UIWow_WindowMouseUp(float nx, float ny);
-void UIWow_ShutdownWindows(void);
-
 /* Shared helpers (defined in menu_main.c) */
-void UIWow_EnterGameMode(void);
 void UIWow_EnsureRenderer(void);
 void UIWow_Printf(LPCSTR fmt, ...);
 void UIWow_WarnOnce(DWORD flag, LPCSTR fmt, ...);

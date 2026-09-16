@@ -47,7 +47,7 @@ static void CL_RegisterImageConfigString(DWORD index, BOOL replace, LPCSTR olds)
         re.ReleaseTexture((LPTEXTURE)cl.pics[image]);
         cl.pics[image] = NULL;
     }
-    if (*name) cl.pics[image] = re.LoadTexture(CL_ResolveImagePath(name));
+    if (*name) cl.pics[image] = re.LoadTexture(name);
 }
 
 /* Register one font configstring after parsing its optional path,size encoding. */

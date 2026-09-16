@@ -1,91 +1,34 @@
 # UI System Quick Reference
 
-This is the short version of the current client-side UI architecture.
+## Ownership
 
-## System Overview
+| Presentation | Author | Draw/input owner |
+|---|---|---|
+| Main menu, campaign selector, lobby | `games/warcraft-3/menu/` | Menu library, gated by `CL_MenuActive()` |
+| Loading screen | Game | Generic client loading layout |
+| HUD and command card | `games/warcraft-3/game/hud/` | Generic client `svc_layout` handlers |
+| In-game dialogs | Game | Generic client `svc_window` manager |
 
-```text
-Mouse/keyboard
-  -> client input
-  -> games/warcraft-3/menu/menu_main.c
-  -> games/warcraft-3/menu/screens/*.c
-  -> games/warcraft-3/menu/menu_render.c
-  -> renderer API
-```
+## Selection Flow
 
-The UI library parses Warcraft III FDF files client-side, owns the frame tree, and switches screens through menu commands. The server provides game data only, such as command buttons and inventory items.
+Client input sends the selection/order command and updates its local selection hint. The game's authoritative
+selection path validates the entity set and authors command, inventory, queue, and information frames from
+`games/warcraft-3/game/hud/`. Those frames travel through `svc_layout` to the generic client renderer and input
+handlers. No menu callback, separate HUD query, or menu-owned unit cache participates.
 
-## Startup
+Recipient-specific skin keys are resolved in the game before registering concrete texture paths. HUD templates
+and media identities are rebuilt across map/save-load transitions; see [HUD Media Lifetime](../hud-media.md).
 
-`CL_Init` creates the renderer and UI function tables:
+## Lifecycle
 
-1. Bind the OpenGL renderer through `R_GetAPI`.
-2. Initialise the renderer.
-3. Initialise `M_GetAPI`.
-4. Load theme and FDF assets.
-5. Execute `ui_start_command`, default `menu_main`.
+`CL_Init` initializes the renderer and menu. Loading suspends menu resources through Shutdown. During loading
+and gameplay the menu receives no draw/input/command callbacks. Return-to-menu initializes its resources again.
+The library itself stays loaded so registered function pointers remain valid.
 
-Common commands:
+## Verification
 
-| Command | Purpose |
-|---------|---------|
-| `menu_main` | Main menu |
-| `menu_game` | Single-player menu |
-| `menu_lan_refresh` | LAN game list |
-| `menu_startserver` | Create LAN game |
+Run `make test` and `python3 tools/menu_boundary_audit.py`. The suite covers selection state, packet alignment,
+exclusive screen/input/command dispatch, menu suspension/reinitialization, and per-recipient HUD textures.
 
-## Unit Selection Flow
-
-```text
-client/cl_input.c
-  CL_RequestUnitUI
-  -> clc_request_unit_ui
-  -> server/sv_unit_ui.c
-  -> games/warcraft-3/game/hud/hud_unit.c
-  -> svc_unit_ui
-  -> client/cl_unit_ui.c
-  -> ui.UpdateUnitUI
-  -> games/warcraft-3/menu/screens/console_ui.c
-```
-
-The client caches returned unit data and renders it on subsequent UI frames.
-
-## Core Files
-
-| File | Purpose |
-|------|---------|
-| `client/menu.h` | Shared UI module API declaration |
-| `games/warcraft-3/menu/menu_main.c` | UI entry point, lifecycle, startup command, screen selection |
-| `games/warcraft-3/menu/menu_fdf.c` | FDF parsing and frame registry |
-| `games/warcraft-3/menu/menu_render.c` | Layout solving and frame rendering |
-| `games/warcraft-3/menu/menu_theme.c` | Warcraft UI theme resources |
-| `games/warcraft-3/menu/screens/main_menu.c` | Main menu screen |
-| `games/warcraft-3/menu/screens/console_ui.c` | In-game HUD screen |
-| `client/cl_main.c` | Renderer/UI init and client frame loop |
-| `client/cl_unit_ui.c` | `svc_unit_ui` parser |
-| `server/sv_unit_ui.c` | Unit UI data request handler |
-| `games/warcraft-3/game/hud/hud_unit.c` | Game-side unit UI data provider |
-
-## Runtime Cvars
-
-| cvar | Purpose |
-|------|---------|
-| `menu_module` | UI module name |
-| `g_module` | Game module name |
-| `ui_start_command` | Initial UI command |
-| `com_frame_limit` | Exit after N frames |
-
-See [Runtime Modules and Cvars](../../../architecture/runtime.md) for the full config reference.
-
-## Debug Checklist
-
-1. Use `mdxtool --info` to verify model assets and sequence names.
-2. Use `screenshot` and `+com_frame_limit` to capture a bounded UI frame.
-3. Check layout, anchors, tiling, translated strings, and color codes on the captured frame.
-
-## See Also
-
-- [UI System Architecture](./ui.md)
-- [Runtime Modules and Cvars](../../../architecture/runtime.md)
-- [UI Flow](ui-flow.md)
-- [FDF File Format](../file-formats/fdf.md)
+See [UI architecture](ui.md), [screen flow](ui-flow.md), and the
+[engine UI boundary](../../../architecture/ui-system.md).

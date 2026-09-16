@@ -129,7 +129,6 @@ static menuExport_t init_ui(void) {
         .GetRenderer   = test_get_renderer,
         .Printf        = test_printf,
     });
-    menu.UpdatePlayerState(&test_ps);
     T_NOT_NULL(menu.Init);
     /* Do NOT call menu.Init() — that spins up the Lua glue state which
      * requires the full MPQ.  We only need the XML runtime here. */

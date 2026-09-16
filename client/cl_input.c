@@ -226,10 +226,6 @@ static void CL_SendSmartCommand(float x, float y) {
             ? "smartpoint %d %d queue" : "smartpoint %d %d",
             (int)point.x, (int)point.y);
     }
-
-    if (cl.selection.num_selected) {
-        CL_RequestUnitUI(cl.selection.num_selected, cl.selection.entity_nums);
-    }
 }
 
 static void IN_PanDown(void) {
@@ -562,13 +558,9 @@ void CL_Input(void) {
         
         switch(event.type) {
             case SDL_TEXTINPUT:
-                if (cls.key_dest == key_console) {
-                    CON_TextInput(event.text.text);
-                } else if (cls.key_dest == key_menu) {
-                    menu.TextInput(event.text.text);
-                } else if (cls.key_dest == key_game) {
-                    CL_WindowTextInput(event.text.text);
-                }
+                if (cls.key_dest == key_console) CON_TextInput(event.text.text);
+                else if (CL_MenuActive() && cls.key_dest == key_menu) menu.TextInput(event.text.text);
+                else if (cls.state == ca_active && cls.key_dest == key_game) CL_WindowTextInput(event.text.text);
                 break;
             case SDL_KEYDOWN:
                 if (event.key.keysym.sym == SDLK_BACKQUOTE) {
@@ -599,19 +591,13 @@ void CL_Input(void) {
                 mouse.origin.x = event.button.x;
                 mouse.origin.y = event.button.y;
                 mouse.button = event.button.button;
-                if (cls.key_dest == key_menu && menu.MouseEvent(MENU_MOUSE_DOWN, event.button.x, event.button.y, event.button.button)) {
+                if (CL_MenuActive() && cls.key_dest == key_menu) {
+                    menu.MouseEvent(MENU_MOUSE_DOWN, event.button.x, event.button.y, event.button.button);
                     break;
                 }
+                if (cls.state != ca_active) break;
                 if (CL_WindowMouseEvent(MENU_MOUSE_DOWN, event.button.x, event.button.y, event.button.button)) break;
                 if (SCR_LayoutMouseEvent(MENU_MOUSE_DOWN, event.button.x, event.button.y, event.button.button)) break;
-                if (cls.key_dest == key_menu) {
-                    if (event.button.button == SDL_BUTTON_LEFT) {
-                        mouse.event = UI_LEFT_MOUSE_DOWN;
-                    } else if (event.button.button == SDL_BUTTON_RIGHT) {
-                        mouse.event = UI_RIGHT_MOUSE_DOWN;
-                    }
-                    break;
-                }
                 if (event.button.button == SDL_BUTTON_LEFT) {
                     mouse.event = UI_LEFT_MOUSE_DOWN;
                 } else if (event.button.button == SDL_BUTTON_RIGHT) {
@@ -622,19 +608,13 @@ void CL_Input(void) {
                 mouse.origin.x = event.button.x;
                 mouse.origin.y = event.button.y;
                 mouse.button = 0;
-                if (cls.key_dest == key_menu && menu.MouseEvent(MENU_MOUSE_UP, event.button.x, event.button.y, event.button.button)) {
+                if (CL_MenuActive() && cls.key_dest == key_menu) {
+                    menu.MouseEvent(MENU_MOUSE_UP, event.button.x, event.button.y, event.button.button);
                     break;
                 }
+                if (cls.state != ca_active) break;
                 if (CL_WindowMouseEvent(MENU_MOUSE_UP, event.button.x, event.button.y, event.button.button)) break;
                 if (SCR_LayoutMouseEvent(MENU_MOUSE_UP, event.button.x, event.button.y, event.button.button)) break;
-                if (cls.key_dest == key_menu) {
-                    if (event.button.button == SDL_BUTTON_LEFT) {
-                        mouse.event = UI_LEFT_MOUSE_UP;
-                    } else if (event.button.button == SDL_BUTTON_RIGHT) {
-                        mouse.event = UI_RIGHT_MOUSE_UP;
-                    }
-                    break;
-                }
                 if (event.button.button == SDL_BUTTON_LEFT) {
                     mouse.event = UI_LEFT_MOUSE_UP;
                 } else if (event.button.button == SDL_BUTTON_RIGHT) {
@@ -644,13 +624,13 @@ void CL_Input(void) {
             case SDL_MOUSEMOTION:
                 mouse.origin.x = event.motion.x;
                 mouse.origin.y = event.motion.y;
-                if (cls.key_dest == key_menu)
+                if (CL_MenuActive() && cls.key_dest == key_menu) {
                     menu.MouseEvent(MENU_MOUSE_MOVE, event.motion.x, event.motion.y, 0);
-                if (CL_WindowMouseEvent(MENU_MOUSE_MOVE, event.motion.x, event.motion.y, 0)) break;
-                SCR_LayoutMouseEvent(MENU_MOUSE_MOVE, event.motion.x, event.motion.y, 0);
-                if (cls.key_dest == key_menu) {
                     break;
                 }
+                if (cls.state != ca_active) break;
+                if (CL_WindowMouseEvent(MENU_MOUSE_MOVE, event.motion.x, event.motion.y, 0)) break;
+                SCR_LayoutMouseEvent(MENU_MOUSE_MOVE, event.motion.x, event.motion.y, 0);
                 CL_MouseMotion(&event.motion);
                 break;
             case SDL_MOUSEWHEEL:
@@ -658,8 +638,11 @@ void CL_Input(void) {
                     int x, y, n;
                     keyCode_t wheelkey;
                     SDL_GetMouseState(&x, &y);
-                    if (cls.key_dest == key_menu)
+                    if (CL_MenuActive() && cls.key_dest == key_menu) {
                         menu.MouseEvent(MENU_MOUSE_SCROLL, x, y, MENU_MOUSE_PARAM(event.wheel.x, event.wheel.y));
+                        break;
+                    }
+                    if (cls.state != ca_active) break;
                     if (CL_WindowMouseEvent(MENU_MOUSE_SCROLL, x, y, MENU_MOUSE_PARAM(event.wheel.x, event.wheel.y))) break;
                     SCR_LayoutMouseEvent(MENU_MOUSE_SCROLL, x, y, MENU_MOUSE_PARAM(event.wheel.x, event.wheel.y));
                     /* Discrete wheel ticks are bindable keys (MWHEELUP / MWHEELDOWN). */
@@ -745,7 +728,6 @@ static void CL_SendSameTypeSelection(DWORD anchor) {
      * returns the authoritative same-type membership. */
     cl.selection.num_selected = 1;
     cl.selection.entity_nums[0] = anchor;
-    CL_RequestUnitUI(1, cl.selection.entity_nums);
 }
 
 void IN_SelectDown(void) {
@@ -825,7 +807,6 @@ void IN_SelectUp(void) {
                  * authoritative game selection remains server-owned. */
                 cl.selection.num_selected = 1;
                 cl.selection.entity_nums[0] = entnum;
-                CL_RequestUnitUI(1, cl.selection.entity_nums);
             }
             if (queue) {
                 CL_ResetSelectClickChain();
@@ -838,9 +819,6 @@ void IN_SelectUp(void) {
             MSG_WriteByte(&cls.netchan.message, clc_stringcmd);
             SZ_Printf(&cls.netchan.message, queue ? "point %d %d queue" : "point %d %d",
                       (int)point.x, (int)point.y);
-            if (cl.selection.num_selected) {
-                CL_RequestUnitUI(cl.selection.num_selected, cl.selection.entity_nums);
-            }
         } else {
             CL_ResetSelectClickChain();
         }
@@ -1215,6 +1193,53 @@ TEST(client_input, minimap_focus_and_release_are_selection_independent) {
 }
 
 /* Keep the SDL queue, key binding, layout hit test and command buffer in the regression path. */
+static DWORD test_menu_mouse, test_menu_text, test_menu_keys;
+static BOOL CL_TestMenuMouse(menuMouseEvent_t event, int x, int y, int32_t param) {
+    (void)event; (void)x; (void)y; (void)param; test_menu_mouse++; return false;
+}
+static void CL_TestMenuText(LPCSTR text) { (void)text; test_menu_text++; }
+static void CL_TestMenuKey(int key, BOOL down, DWORD time) { (void)key; (void)down; (void)time; test_menu_keys++; }
+TEST(client_input, menu_sdl_input_is_exclusive_with_world_presentation) {
+    struct client_state *old = MemAlloc(sizeof(cl));
+    struct client_static old_cls = cls;
+    menuExport_t old_menu = menu;
+    UINAME click_bind, key_bind;
+    mouseEvent_t old_mouse = mouse;
+    refExport_t old_re = re;
+    __typeof__(input) old_input = input;
+    SDL_Event events[] = {
+        { .button = { .type = SDL_MOUSEBUTTONDOWN, .button = SDL_BUTTON_LEFT, .x = 10, .y = 20 } },
+        { .button = { .type = SDL_MOUSEBUTTONUP, .button = SDL_BUTTON_LEFT, .x = 10, .y = 20 } },
+        { .motion = { .type = SDL_MOUSEMOTION, .x = 10, .y = 20 } },
+        { .wheel = { .type = SDL_MOUSEWHEEL, .y = 1 } },
+        { .text = { .type = SDL_TEXTINPUT, .text = "test" } },
+        { .key = { .type = SDL_KEYDOWN, .keysym.sym = SDLK_F12 } },
+    };
+    memcpy(old, &cl, sizeof(cl)); memset(&cl, 0, sizeof(cl));
+    input = (__typeof__(input)){0}; cls.key_dest = key_menu;
+    menu.MouseEvent = CL_TestMenuMouse; menu.TextInput = CL_TestMenuText; menu.KeyEvent = CL_TestMenuKey;
+    re.GetWindowSize = CL_TestWindowSize;
+    strlcpy(click_bind, Key_GetBinding(K_MOUSE1, 0), sizeof(click_bind));
+    strlcpy(key_bind, Key_GetBinding(K_F12, 0), sizeof(key_bind));
+    Key_SetBinding(K_MOUSE1, 0, ""); Key_SetBinding(K_F12, 0, "");
+    T_EQ(SDL_InitSubSystem(SDL_INIT_EVENTS), 0);
+    test_menu_mouse = test_menu_text = test_menu_keys = 0;
+    FOR_LOOP(mode, 3) {
+        cls.state = mode == 0 ? ca_active : mode == 1 ? ca_connected : ca_disconnected;
+        cl.playerstate.client_ui_state = mode == 1 ? CLIENT_UI_LOADING : CLIENT_UI_GAME;
+        FOR_LOOP(i, sizeof(events) / sizeof(events[0])) T_EQ(SDL_PushEvent(&events[i]), 1);
+        CL_Input();
+        if (mode < 2) {
+            T_EQ(test_menu_mouse, 0); T_EQ(test_menu_text, 0); T_EQ(test_menu_keys, 0);
+        } else {
+            T_EQ(test_menu_mouse, 4); T_EQ(test_menu_text, 1); T_ASSERT(test_menu_keys > 0);
+        }
+    }
+    SDL_QuitSubSystem(SDL_INIT_EVENTS);
+    Key_SetBinding(K_MOUSE1, 0, click_bind); Key_SetBinding(K_F12, 0, key_bind); mouse = old_mouse;
+    memcpy(&cl, old, sizeof(cl)); MemFree(old); cls = old_cls; menu = old_menu; re = old_re; input = old_input;
+}
+
 TEST(client_input, minimap_sdl_click_drag_release_over_hud) {
     CL_TestWorldBounds(true);
     struct client_state *old_cl = MemAlloc(sizeof(cl));

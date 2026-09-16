@@ -1,5 +1,10 @@
 # UI Flow
 
+> Historical migration notes below may describe removed HUD callbacks. The current contract is
+> [exclusive main-menu and game-authored HUD ownership](../../../architecture/ui-system.md).
+> `UpdateUnitUI`, `UpdatePlayerState`, and menu image resolution have been removed; do not restore them.
+
+
 This document traces the current client-side UI path: input, menu commands, frame rendering, and unit-data queries.
 
 ## Overview
@@ -422,11 +427,11 @@ SCR_UpdateScreen();
 
 1. `re.BeginFrame`
 2. `re.RenderFrame`
-3. `ui.DrawFrame`
+3. Menu refresh outside a world, or generic layout/window drawing in-game
 4. console/debug overlay
 5. `re.EndFrame`
 
-`ui.DrawFrame` dispatches to the active screen. For `menu_main`, `games/warcraft-3/menu/screens/main_menu.c` draws the `MainMenu3d` portrait background, the logo sprite, and the main menu frame tree.
+`menu.Refresh` dispatches to the active glue screen only when `CL_MenuActive()` permits it. For `menu_main`, `games/warcraft-3/menu/screens/main_menu.c` draws the `MainMenu3d` portrait background, the logo sprite, and the main menu frame tree.
 
 ## Server-Authored Modal Gameplay UI
 
@@ -440,59 +445,19 @@ The single-client Quest dialog additionally owns a Warcraft simulation pause. Th
 
 ## Unit Selection and Command Card Flow
 
-Unit UI data still comes from the server because it depends on game rules and selected entities.
+Client input sends the selection/order command and updates its local selection hint. The game's authoritative
+selection path validates the entity set and authors command, inventory, queue, and information frames from
+`games/warcraft-3/game/hud/`. Those frames travel through `svc_layout` to the generic client renderer and input
+handlers. No menu callback, separate HUD query, or menu-owned unit cache participates.
 
-```text
-client selection
-  -> CL_RequestUnitUI
-  -> clc_request_unit_ui
-  -> server/sv_unit_ui.c
-  -> games/warcraft-3/game/hud/hud_unit.c
-  -> svc_unit_ui
-  -> client/cl_unit_ui.c
-  -> ui.UpdateUnitUI
-  -> games/warcraft-3/menu/screens/console_ui.c
-```
-
-### Client Request
-
-```c
-void CL_RequestUnitUI(DWORD num_selected, DWORD *entity_nums) {
-    MSG_WriteByte(&cls.netchan.message, clc_request_unit_ui);
-    MSG_WriteByte(&cls.netchan.message, (BYTE)num_selected);
-    for (DWORD i = 0; i < num_selected; i++) {
-        MSG_WriteShort(&cls.netchan.message, (SHORT)entity_nums[i]);
-    }
-}
-```
-
-### Server Query
-
-```c
-gameCommandButton_t buttons[12];
-BYTE num_buttons = ge->GetCommandButtons(ent, buttons, 12);
-```
-
-The server serializes command buttons, inventory, and build queue data into `svc_unit_ui`.
-
-### Client Cache
-
-```c
-void ConsoleUI_UpdateUnitUI(DWORD num_units, menuUnitData_t *units) {
-    cached_unit_count = num_units;
-    memcpy(cached_units, units, sizeof(menuUnitData_t) * num_units);
-}
-```
-
-The HUD screen renders from this cache on later frames.
-
-In-game HUD chrome is server-authored `svc_layout` from `game/hud/`. All HUD bindings live in one `hud` object. `G_LoadMap` memsets it and `UI_LoadHud()` binds every panel because `SV_Map` wipes `CS_IMAGES` / `CS_FONTS`. See [HUD Media Lifetime](../hud-media.md).
+Recipient-specific skin keys are resolved in the game before registering concrete texture paths. HUD templates
+and media identities are rebuilt across map/save-load transitions; see [HUD Media Lifetime](../hud-media.md).
 
 ## Key Decisions
 
 - UI rendering is client-side for instant menu interaction.
 - The server remains authoritative for game data.
-- FDF assets are parsed by the UI library, not by the game DLL.
+- Glue FDF assets are parsed by the menu library; HUD FDF assets are parsed by the game.
 - Runtime modules communicate through Quake-style function tables.
 - Campaign selection and mission selection are separate states; only a mission issues `map`.
 - Campaign difficulty is startup game state, not merely a menu label.

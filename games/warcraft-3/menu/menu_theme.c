@@ -112,23 +112,6 @@ static LPCSTR UI_FindThemeValue(LPCSTR entry, LPCSTR category) {
     return NULL;
 }
 
-static LPCSTR UI_ThemeRaceCategory(DWORD race) {
-    switch (race) {
-        case kPlayerRaceHuman: return "Human";
-        case kPlayerRaceOrc: return "Orc";
-        case kPlayerRaceUndead: return "Undead";
-        case kPlayerRaceNightElf: return "NightElf";
-        default: return NULL;
-    }
-}
-
-static LPCSTR UI_ThemeEffectiveCategory(LPCSTR category) {
-    LPCSTR player_category;
-    if (!category || !*category || strcmp(category, "Default")) return category;
-    player_category = menu_player ? UI_ThemeRaceCategory(menu_player->race) : NULL;
-    return player_category ? player_category : category;
-}
-
 /* Warcraft skin versions follow the mounted data edition: 0=RoC, 1=TFT. */
 static DWORD UI_ThemeGameVersion(void) {
     LPCSTR expansion = mi.Cvar_String
@@ -146,7 +129,6 @@ BZ_HOST_HIDDEN LPCSTR Theme_String(LPCSTR entry, LPCSTR category) {
     if (!category || !*category) {
         category = fallback;
     }
-    category = UI_ThemeEffectiveCategory(category);
 
     filename = UI_FindThemeValue(entry, category);
     if (!filename && strcmp(category, fallback)) {

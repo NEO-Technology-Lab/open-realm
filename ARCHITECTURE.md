@@ -256,7 +256,7 @@ For in-depth details on specific engine subsystems, consult the following dedica
   Game policies reside exclusively under `games/<game>/`.
   - An `#ifdef <GAME>` guard or hardcoded `strcmp(command, "<game>_...")` branch in a shared dispatcher
     (`CL_ParseGameCommand`, `SV_*`, `R_*`) is also a violation. Use the existing function-table extension
-    point instead; for example, `menu.GameCommand(command, payload.data, payload.cursize)` is unconditional.
+    point instead; gameplay presentation uses server-authored layout/window contracts, never a `menu.*` hook.
     If no hook exists, add a function-table entry rather than using `#ifdef` as a substitute.
 - **Network Contract Stability**: `entityState_t` and `playerState_t` are tight network contracts. Never add fields without careful justification; prefer existing fields, configstrings, or server-authored UI payloads.
 - **Data-Oriented & id-Tech Idioms**: Follow Quake 2 patterns (`g_*.c`, `cl_*.c`, `sv_*.c`, `r_*.c`). Favor flat, memory-mapped structs, single-pass schema tables, and thin interfaces over heavy OOP abstractions.

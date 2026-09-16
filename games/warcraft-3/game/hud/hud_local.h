@@ -114,6 +114,7 @@ DWORD UI_WindowTextOffset(LPCSTR text);
 void UI_ResetFrameWriteList(void);
 void UI_CenterFrame(LPFRAMEDEF frame);
 DWORD UI_LiveImage(DWORD image);
+LPCSTR UI_ThemeImagePath(LPCSTR key);
 DWORD UI_LiveFont(DWORD font);
 void UI_ResetHud(void);
 void UI_LoadHud(void);

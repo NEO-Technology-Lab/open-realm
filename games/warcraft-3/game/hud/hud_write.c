@@ -316,10 +316,11 @@ DWORD UI_LiveImage(DWORD image) {
         decorate = hud.image_decorated[image];
     }
     if (!key || !*key) return image;
-    /* Preserve symbolic keys in CS_IMAGES; the recipient resolves war3skins locally. */
+    /* Resolve each recipient's skin before publishing concrete resource paths. */
     if (decorate || (!strchr(key, '\\') && !strchr(key, '/'))) {
-        live = gi.ImageIndex(key);
-        UI_RememberImage(live, key, key, decorate);
+        path = UI_ThemeImagePath(key);
+        live = gi.ImageIndex(path);
+        UI_RememberImage(live, key, path, decorate);
         return live;
     }
     path = UI_ResolveTextureAlias(name && *name ? name : key);
@@ -333,8 +334,9 @@ BZ_HOST_HIDDEN DWORD UI_LoadTexture(LPCSTR path, BOOL decorate) {
 
     if (!path || !*path) return 0;
 
-    index = gi.ImageIndex(path);
-    UI_RememberImage(index, path, path, decorate);
+    LPCSTR resolved = UI_ThemeImagePath(path);
+    index = gi.ImageIndex(resolved);
+    UI_RememberImage(index, path, resolved, decorate);
     return index;
 }
 
@@ -379,6 +381,34 @@ LPCSTR Theme_PlayerString(LPGAMECLIENT client, LPCSTR key, LPCSTR def) {
     value = Stb_IniCacheFind(&game.config.theme, category, versioned);
     if (!value && strcmp(category, "Default")) value = Stb_IniCacheFind(&game.config.theme, "Default", versioned);
     return value ? value : def;
+}
+
+/* Some editions omit one widescreen extension key but provide its paired 05/06 texture.
+ * Retain that established file-family rule here, alongside the authoritative skin lookup. */
+LPCSTR UI_ThemeImagePath(LPCSTR key) {
+    static PATHSTR path;
+    LPCSTR value, sibling;
+    char digit = 0, *end, *dot;
+    if (!key || !*key || strchr(key, '\\') || strchr(key, '/')) return UI_ResolveTextureAlias(key ? key : "");
+    value = Theme_PlayerString(ui_current_client, key, NULL);
+    if (value) return UI_ResolveTextureAlias(value);
+    if (!strcmp(key, "ConsoleTexture05")) digit = '5';
+    else if (!strcmp(key, "ConsoleTexture06")) digit = '6';
+    if (digit) {
+        sibling = Theme_PlayerString(ui_current_client, digit == '5' ? "ConsoleTexture06" : "ConsoleTexture05", NULL);
+        if (sibling) {
+            snprintf(path, sizeof(path), "%s", sibling);
+            dot = strrchr(path, '.'); end = dot ? dot : path + strlen(path);
+            if (end - path >= 2 && end[-2] == '0' && end[-1] == (digit == '5' ? '6' : '5')) {
+                end[-1] = digit;
+                return path;
+            }
+        }
+    }
+    value = UI_ResolveTextureAlias(key);
+    if (!strchr(value, '.') && !strchr(value, '\\'))
+        fprintf(stderr, "WC3 HUD: unresolved image skin key %s\n", key);
+    return value;
 }
 
 BZ_HOST_HIDDEN FLOAT Theme_Float(LPCSTR key, LPCSTR def) {

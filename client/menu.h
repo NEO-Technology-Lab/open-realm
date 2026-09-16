@@ -19,11 +19,6 @@
 
 #include "client/tr_public.h"
 
-/* Unit UI data structures (Phase 8) */
-#define MAX_COMMAND_BUTTONS 12
-#define MAX_INVENTORY_SLOTS 16 // must match WOW_UI_INVENTORY_SLOTS in wow_ui_shared.h
-#define MAX_BUILD_QUEUE_ITEMS 7
-#define MAX_LAYOUT_LAYERS 16
 
 #ifndef MENU_MOUSE_EVENT_DEFINED
 #define MENU_MOUSE_EVENT_DEFINED
@@ -41,30 +36,6 @@ typedef enum {
 #define MENU_MOUSE_PARAM_Y(p)     ((int16_t)((((uint32_t)(p)) >> 16) & 0xFFFF))
 
 typedef struct {
-    char art[256];        /* Button icon path */
-    char tooltip[256];    /* Tooltip text */
-    char ubertip[512];    /* Extended tooltip */
-    char command[256];    /* Command to execute on click */
-    char hotkey;          /* Keyboard hotkey */
-    BYTE x;               /* Warcraft command grid column */
-    BYTE y;               /* Warcraft command grid row */
-    BYTE research;        /* Uses research command */
-    BYTE active;          /* Current selected entity is using this ability */
-} menuCommandButton_t;
-
-typedef struct {
-    char art[256];        /* Item icon path */
-    char tooltip[256];    /* Tooltip text */
-    char ubertip[512];    /* Extended tooltip */
-    BYTE slot;            /* Inventory slot index (0-5) */
-} menuInventoryItem_t;
-
-typedef struct {
-    char art[256];        /* Queue item icon path */
-    WORD entity;          /* Entity number of building unit */
-} menuQueueItem_t;
-
-typedef struct {
     char address[64];
     char hostname[80];
     char mapname[80];
@@ -73,38 +44,6 @@ typedef struct {
     DWORD speed;
     DWORD slots;
 } menuLanGame_t;
-
-typedef struct {
-    WORD entity_num;                              /* Entity number */
-    DWORD class_id;
-    DWORD model;
-    char name[128];
-    char class_text[128];
-    char icon_art[256];
-    BYTE is_building;
-    BYTE is_hero;
-    BYTE is_constructing;
-    BYTE health;
-    BYTE mana;
-    BYTE ability;
-    WORD level;
-    SHORT damage_min;
-    SHORT damage_max;
-    SHORT armor;
-    SHORT food_used;
-    SHORT food_made;
-    SHORT gold_cost;
-    SHORT lumber_cost;
-    SHORT hero_strength;
-    SHORT hero_agility;
-    SHORT hero_intelligence;
-    BYTE num_buttons;                             /* Number of command buttons */
-    menuCommandButton_t buttons[MAX_COMMAND_BUTTONS];
-    BYTE num_inventory;                           /* Number of inventory items */
-    menuInventoryItem_t inventory[MAX_INVENTORY_SLOTS];
-    BYTE num_queue;                               /* Number of build queue items */
-    menuQueueItem_t queue[MAX_BUILD_QUEUE_ITEMS];
-} menuUnitData_t;
 
 /* Callbacks provided by the client to the menu library.
  * The UI imports file I/O, memory allocation, and command forwarding. */
@@ -169,16 +108,7 @@ typedef struct {
     void (*TextInput)(LPCSTR text);
     BOOL (*MouseEvent)(menuMouseEvent_t event, int x, int y, int32_t param);
     
-    /* Unit UI data updates (Phase 8: HUD migration) */
-    void (*UpdateUnitUI)(DWORD num_units, menuUnitData_t *units);
-    void (*UpdatePlayerState)(LPCPLAYER state);
     void (*UpdateLobbySetup)(lobbyState_t const *state);
-
-    /* Resolve a Warcraft-specific symbolic image key for the local player. */
-    LPCSTR (*ResolveImagePath)(LPCSTR key);
-
-    /* Legacy named XML windows — show/hide a menu.dll-owned window by ID. */
-    void (*ShowWindow)(const char *window_id, int show);
 } menuExport_t;
 
 /* Entry point called by the client to get the UI function table.

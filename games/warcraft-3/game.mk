@@ -170,7 +170,7 @@ TEST_UI_SRCS := \
 
 TEST_JOBS ?= 16
 
- test: test-assets $(SHARED_LIB) $(JASS_LIB) $(SHEET_LIB) | $(BIN_DIR) $(TEST_JUNIT_DIR)
+ test: test-menu-boundary test-assets $(SHARED_LIB) $(JASS_LIB) $(SHEET_LIB) | $(BIN_DIR) $(TEST_JUNIT_DIR)
 	@rm -f $(TEST_JUNIT_DIR)/*.xml
 	@$(CC) $(TEST_CFLAGS) -DBZ_TESTS -o $(BIN_DIR)/test_openwarcraft3$(EXE_EXT) \
 		tests/test_runner.c tests/test_compat.c tests/test_net.c tests/test_tool_common.c \
@@ -282,3 +282,7 @@ WC3_PHONY := wc3-build jass-tool jass sheet renderer game menu openwarcraft3 run
 	audit-wc3-maps test-wc3-map-audit test \
 	test-commands test-server-net test-renderer-model test-mdx-ui test-renderer-view test-renderer-shadows test-galaxy test-menu test-mpq-compat test-assets test-render-golden \
 	update-render-golden openwarcraft3-tests test-wc3-engine download
+
+.PHONY: test-menu-boundary
+test-menu-boundary:
+	@python3 tools/menu_boundary_audit.py

@@ -47,7 +47,6 @@ void CL_ApplySelection(DWORD const *ids, DWORD n) {
     SZ_Printf(&cls.netchan.message, "%s", buffer);
     cl.selection.num_selected = n;
     memcpy(cl.selection.entity_nums, ids, sizeof(DWORD) * n);
-    CL_RequestUnitUI(n, cl.selection.entity_nums);
 }
 
 static void CL_GroupAssign(DWORD g) {
@@ -124,13 +123,10 @@ void CL_ControlGroupsInit(void) {
 
 #ifdef BZ_TESTS
 #include "shared/test.h"
-static DWORD test_ui_calls;
-static void CL_TestSelectionUI(DWORD count, menuUnitData_t *units) { (void)count; (void)units; test_ui_calls++; }
 TEST(client_input, single_selection_groups_recall_one_target_without_moving_camera) {
     BYTE old_sel[sizeof(cl.selection)], old_group[sizeof(cl.groups[0])], data[256];
     sizeBuf_t old_msg = cls.netchan.message;
     menuExport_t old_menu = menu;
-    menu.UpdateUnitUI = CL_TestSelectionUI; test_ui_calls = 0;
     DWORD old_last = cl.group_last, old_ms = cl.group_last_ms, ids[] = { 7, 8 };
     char command[64];
     int limit = Cvar_Integer("cl_selection_limit", 64), focus = Cvar_Integer("cl_group_focus", 1);
@@ -157,7 +153,6 @@ TEST(client_input, single_selection_groups_recall_one_target_without_moving_came
     T_EQ(cls.netchan.message.readcount, cls.netchan.message.cursize);
     Cvar_SetValue("cl_selection_limit", limit);
     Cvar_SetValue("cl_group_focus", focus);
-    T_EQ(test_ui_calls, 4);
     menu = old_menu;
     cls.netchan.message = old_msg;
     memcpy(&cl.selection, old_sel, sizeof(old_sel));

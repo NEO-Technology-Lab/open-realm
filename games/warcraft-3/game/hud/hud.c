@@ -200,7 +200,7 @@ static LPCSTR UI_ControlHighlightSkin(LPCSTR name) {
 
 static DWORD UI_ControlThemeImage(LPCSTR key) {
     if (!key || !*key) return 0;
-    return gi.ImageIndex(key);
+    return gi.ImageIndex(UI_ThemeImagePath(key));
 }
 
 static uiBackdrop_t MakeButtonBackdrop(LPCFRAMEDEF frame, LPCSTR name) {
