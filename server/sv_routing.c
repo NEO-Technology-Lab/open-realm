@@ -417,16 +417,35 @@ static BOOL pathtex_clear_pixel_is_bridge_deck(pathTex_t const *pt, int x, int y
     return low && high;
 }
 
+static void pathtex_rotated_size(pathTex_t const *pt, FLOAT angle, int *width, int *height, int *turn) {
+    int const quarter = (int)lroundf(angle / ((FLOAT)M_PI / 2.0f));
+    *turn = ((quarter % 4) + 4) % 4;
+    *width = *turn & 1 ? pt->height : pt->width;
+    *height = *turn & 1 ? pt->width : pt->height;
+}
+
+static point2_t pathtex_rotated_point(pathTex_t const *pt, DWORD x, DWORD y, int turn) {
+    switch (turn) {
+    case 1: return (point2_t){ (int)pt->height - 1 - (int)y, (int)x };
+    case 2: return (point2_t){ (int)pt->width - 1 - (int)x, (int)pt->height - 1 - (int)y };
+    case 3: return (point2_t){ (int)y, (int)pt->width - 1 - (int)x };
+    default: return (point2_t){ (int)x, (int)y };
+    }
+}
+
 /* Stamp a single entity's footprint into a pathmap byte array. */
 static void stamp_entity_obstacle(edict_t const *ent, pathMapCell_t *target) {
     point2_t p = LocationToPathMap(&ent->s.origin2);
     if (ent->pathtex) {
         pathTex_t *pt = ent->pathtex;
+        int width, height, turn;
         BOOL const walkable_surface = entity_is_live_walkable_surface(ent);
+        pathtex_rotated_size(pt, ent->s.angle, &width, &height, &turn);
         FOR_LOOP(x, pt->width) {
             FOR_LOOP(y, pt->height) {
-                int px = (int)x + p.x - (int)pt->width / 2;
-                int py = (int)y + p.y - (int)pt->height / 2;
+                point2_t const rp = pathtex_rotated_point(pt, x, y, turn);
+                int px = rp.x + p.x - width / 2;
+                int py = rp.y + p.y - height / 2;
                 if (is_valid_point(px, py)) {
                     pathMapCell_t *cell = &target[px + py * pathmap.width];
                     BYTE const blocked = pt->map[x + y * pt->width].b;
