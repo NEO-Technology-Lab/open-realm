@@ -2,6 +2,10 @@
 
 /* SC2 edicts have no dynamic walkable surfaces; the shared router must not inspect WC3-only fields. */
 static BOOL entity_is_live_walkable_surface(edict_t const *ent) { (void)ent; return false; }
+static void entity_pathtex_transform(pathTexTransformParams_t const *params, pathTexTransform_t *transform) {
+    if (params && params->pathtex && transform) *transform = MAKE(pathTexTransform_t,
+        .width = params->pathtex->width, .height = params->pathtex->height, .turn = 0);
+}
 
 static inline HANDLE G_WorldReadFile(LPCSTR filename, LPDWORD size) { return gi.ReadFile(filename, size); }
 static inline HANDLE G_WorldMemAlloc(long size) { return gi.MemAlloc(size); }

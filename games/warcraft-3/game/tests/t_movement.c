@@ -2845,6 +2845,37 @@ TEST(wc3_movement, ground_unit_stands_on_walkable_bridge_surface) {
     T_FEQ(unit->s.origin.z, CM_GetHeightAtPoint(unit->s.origin.x, unit->s.origin.y), 0.01f);
 }
 
+TEST(wc3_movement, rectangular_bridge_support_bounds_follow_quarter_turns) {
+    static DestructableData_t const bridge_data = { .walkable = true };
+    struct { WORD width, height; COLOR32 map[15]; } bridge_path = { .width = 5, .height = 3 };
+
+    FOR_LOOP(angle, 4) {
+        BOOL const vertical = !(angle & 1);
+        FLOAT cell, width;
+        LPEDICT unit = make_moving_unit(0.0f, 0.0f);
+        LPEDICT bridge = G_Spawn();
+
+        cell = CM_PathCellWorldSize();
+        width = (vertical ? 3.0f : 5.0f) * cell;
+
+        bridge->class_id = MAKEFOURCC('Y', 'T', '2', '0');
+        bridge->data.DestructableData = &bridge_data;
+        bridge->destructable.initialized = bridge->destructable.placement_solid = true;
+        bridge->pathtex = (pathTex_t *)&bridge_path;
+        bridge->s.origin = MAKE(VECTOR3, 0.0f, 0.0f, 100.0f);
+        bridge->targtype = TARG_BRIDGE;
+        bridge->s.angle = angle * (FLOAT)M_PI / 2.0f;
+        G_RegisterGroundSurface(bridge);
+
+        unit->s.origin.x = width * 0.5f - 1.0f;
+        M_CheckGround(unit);
+        T_FEQ(unit->s.origin.z, 100.0f, 0.01f);
+        unit->s.origin.x = width * 0.5f + 1.0f;
+        M_CheckGround(unit);
+        T_FEQ(unit->s.origin.z, CM_GetHeightAtPoint(unit->s.origin.x, unit->s.origin.y), 0.01f);
+    }
+}
+
 
 TEST(wc3_movement, ground_surface_flag_clears_when_unregistered) {
     static DestructableData_t const bridge_data = { .walkable = true };

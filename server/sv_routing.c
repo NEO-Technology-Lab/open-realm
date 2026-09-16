@@ -82,6 +82,12 @@ typedef struct {
     DWORD tail;
 } heatmapJob_t;
 
+typedef struct {
+    pathTex_t const *pathtex;
+    DWORD x, y;
+    int turn;
+} pathTexPointParams_t;
+
 /* Generic game routing is built incrementally.  The old game-side cap allowed
  * only two synchronous whole-map floods for the lifetime of the map, which
  * made later reachable right-click destinations fall back to straight-line
@@ -417,20 +423,25 @@ static BOOL pathtex_clear_pixel_is_bridge_deck(pathTex_t const *pt, int x, int y
     return low && high;
 }
 
-/* WC3 pathing TGA axes are transposed relative to the world/model axes. */
-static void pathtex_rotated_size(pathTex_t const *pt, FLOAT angle, int *width, int *height, int *turn) {
-    int const quarter = (pt->width != pt->height) + (int)lroundf(angle / ((FLOAT)M_PI / 2.0f));
-    *turn = ((quarter % 4) + 4) % 4;
-    *width = *turn & 1 ? pt->height : pt->width;
-    *height = *turn & 1 ? pt->width : pt->height;
+static pathTexTransform_t pathtex_identity_transform(pathTex_t const *pt) {
+    return MAKE(pathTexTransform_t, .width = pt ? pt->width : 0, .height = pt ? pt->height : 0, .turn = 0);
 }
 
-static point2_t pathtex_rotated_point(pathTex_t const *pt, DWORD x, DWORD y, int turn) {
-    switch (turn) {
-    case 1: return (point2_t){ (int)pt->height - 1 - (int)y, (int)x };
-    case 2: return (point2_t){ (int)pt->width - 1 - (int)x, (int)pt->height - 1 - (int)y };
-    case 3: return (point2_t){ (int)y, (int)pt->width - 1 - (int)x };
-    default: return (point2_t){ (int)x, (int)y };
+pathTexTransform_t CM_GetPathTexTransform(LPCEDICT ent) {
+    pathTex_t const *pt = ent ? ent->pathtex : NULL;
+    pathTexTransform_t result = pathtex_identity_transform(pt);
+    pathTexTransformParams_t const params = MAKE(pathTexTransformParams_t, .ent = ent, .pathtex = pt);
+    entity_pathtex_transform(&params, &result);
+    return result;
+}
+
+static point2_t pathtex_transformed_point(pathTexPointParams_t const *params) {
+    pathTex_t const *pt = params->pathtex;
+    switch (params->turn) {
+    case 1: return (point2_t){ (int)pt->height - 1 - (int)params->y, (int)params->x };
+    case 2: return (point2_t){ (int)pt->width - 1 - (int)params->x, (int)pt->height - 1 - (int)params->y };
+    case 3: return (point2_t){ (int)params->y, (int)pt->width - 1 - (int)params->x };
+    default: return (point2_t){ (int)params->x, (int)params->y };
     }
 }
 
@@ -439,15 +450,14 @@ static void stamp_entity_obstacle(edict_t const *ent, pathMapCell_t *target) {
     point2_t p = LocationToPathMap(&ent->s.origin2);
     if (ent->pathtex) {
         pathTex_t *pt = ent->pathtex;
-        int width, height, turn;
+        pathTexTransform_t const transform = CM_GetPathTexTransform(ent);
         BOOL const walkable_surface = entity_is_live_walkable_surface(ent);
-        if (ent->targtype == TARG_BRIDGE) pathtex_rotated_size(pt, ent->s.angle, &width, &height, &turn);
-        else width = pt->width, height = pt->height, turn = 0;
         FOR_LOOP(x, pt->width) {
             FOR_LOOP(y, pt->height) {
-                point2_t const rp = pathtex_rotated_point(pt, x, y, turn);
-                int px = rp.x + p.x - width / 2;
-                int py = rp.y + p.y - height / 2;
+                point2_t const rp = pathtex_transformed_point(&MAKE(pathTexPointParams_t,
+                    .pathtex = pt, .x = x, .y = y, .turn = transform.turn));
+                int px = rp.x + p.x - transform.width / 2;
+                int py = rp.y + p.y - transform.height / 2;
                 if (is_valid_point(px, py)) {
                     pathMapCell_t *cell = &target[px + py * pathmap.width];
                     BYTE const blocked = pt->map[x + y * pt->width].b;
@@ -491,20 +501,19 @@ static BOOL entity_blocks_static_pathing(edict_t const *ent) {
 }
 
 #ifdef WC3_DEBUG_ROUTING
-static void routing_debug_bridge(edict_t const *ent, point2_t p) {
+static void routing_debug_pathtex(edict_t const *ent, point2_t p, pathTexTransform_t const *transform) {
     DWORD blocked = 0, deck = 0;
     pathTex_t const *pt;
 
-    if (!ent || ent->targtype != TARG_BRIDGE || !(pt = ent->pathtex)) return;
+    if (!ent || !(pt = ent->pathtex)) return;
     FOR_LOOP(y, pt->height) FOR_LOOP(x, pt->width) {
         if (pt->map[x + y * pt->width].b) blocked++;
         else if (pathtex_clear_pixel_is_bridge_deck(pt, x, y)) deck++;
     }
-    fprintf(stderr, "WC3_DEBUG_ROUTING bridge ent=%d id=%.4s pos=%.1f,%.1f angle=%.3f cell=%d,%d "
-        "pathtex=%ux%u blocked=%u deck=%u live=%d solid=%d dead=%d\n", ent->s.number,
-        (LPCSTR)&ent->class_id, ent->s.origin2.x, ent->s.origin2.y, ent->s.angle, p.x, p.y, pt->width, pt->height,
-        blocked, deck, entity_is_live_walkable_surface(ent), ent->destructable.placement_solid,
-        ent->destructable.dead);
+    fprintf(stderr, "WC3_DEBUG_ROUTING pathtex ent=%d pos=%.1f,%.1f angle=%.3f cell=%d,%d "
+        "authored=%ux%u stamped=%dx%d turn=%d blocked=%u deck=%u surface=%d\n", ent->s.number,
+        ent->s.origin2.x, ent->s.origin2.y, ent->s.angle, p.x, p.y, pt->width, pt->height,
+        transform->width, transform->height, transform->turn, blocked, deck, entity_is_live_walkable_surface(ent));
 }
 #endif
 
@@ -525,7 +534,8 @@ void CM_BakeStaticObstacles(void) {
         if (entity_blocks_static_pathing(ent) && entity_is_live_walkable_surface(ent)) {
             stamp_entity_obstacle(ent, pathmap.original);
 #ifdef WC3_DEBUG_ROUTING
-            if (ent->targtype == TARG_BRIDGE) routing_debug_bridge(ent, LocationToPathMap(&ent->s.origin2));
+            pathTexTransform_t const transform = CM_GetPathTexTransform(ent);
+            routing_debug_pathtex(ent, LocationToPathMap(&ent->s.origin2), &transform);
 #endif
         }
     }

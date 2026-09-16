@@ -7,6 +7,23 @@ static BOOL entity_is_live_walkable_surface(edict_t const *ent) {
         ent->data.DestructableData && ent->data.DestructableData->walkable;
 }
 
+/* WC3 pathing TGAs are transposed relative to model/world axes.  Only bridge
+ * targets use the authored angle to select a quarter-turn; ordinary footprints
+ * retain their existing unrotated contract. */
+static void entity_pathtex_transform(pathTexTransformParams_t const *params, pathTexTransform_t *transform) {
+    pathTex_t const *pt = params ? params->pathtex : NULL;
+    FLOAT const angle = params && params->ent ? params->ent->s.angle : 0.0f;
+    int quarter;
+
+    if (!transform || !pt) return;
+    quarter = (pt->width != pt->height) + (int)lroundf(angle / ((FLOAT)M_PI / 2.0f));
+    transform->turn = ((quarter % 4) + 4) % 4;
+    transform->width = transform->turn & 1 ? pt->height : pt->width;
+    transform->height = transform->turn & 1 ? pt->width : pt->height;
+    if (!params->ent || params->ent->targtype != TARG_BRIDGE)
+        transform->turn = 0, transform->width = pt->width, transform->height = pt->height;
+}
+
 static inline HANDLE G_WorldReadFile(LPCSTR filename, LPDWORD size) { return gi.ReadFile(filename, size); }
 static inline HANDLE G_WorldMemAlloc(long size) { return gi.MemAlloc(size); }
 static inline void G_WorldMemFree(HANDLE mem) { gi.MemFree(mem); }

@@ -156,8 +156,14 @@ bridge width. The surface overlay is baked before normal obstacles so it cannot
 erase an overlapping building, and the live bridge is not treated as a circle
 blocker during movement. On death it stops supplying bridge support, terrain
 pathing is restored, and its optional `pathTexDeath` enters the normal
-static-obstacle bake. This intentionally does not rotate or widen the TGA and
-adds no bridge-specific collision-radius exception.
+static-obstacle bake. The authored TGA is not modified or widened, and there is
+no bridge-specific collision-radius exception. For rectangular bridge
+textures, WC3 first applies the authored path-texture axis transpose and then
+the entity's nearest quarter-turn from `s.angle`; square textures keep the same
+cell footprint for every quarter-turn. `M_CheckGround` consumes the same
+transform for walkable-surface support bounds, so the routeable deck and the
+support-height region remain aligned. Only `TARG_BRIDGE` uses this angle policy;
+ordinary destructable and building path textures remain unrotated.
 
 ## Phase Boundary
 
@@ -177,6 +183,10 @@ non-solid objects, callback-independent lethal damage, one-time events and
 callbacks, neutral contextual targeting, dead-order rejection, alive-footprint
 removal, death-footprint replacement, weighted selection, intentional no-item
 results, multiple world-item drops, and one-time loot processing.
+`bridge_path_texture_rotation_covers_all_quarter_turns` also bakes a
+rectangular YT20 bridge at 0, 90, 180, and 270 degrees, checks both route
+orientation and the inverse after death, and verifies the transform dimensions
+used by support queries.
 Random-table tests additionally cover weighted boundaries, explicit table-number
 lookup, multiple table sets, missing/empty data, encoded-placeholder rejection,
 normal world-item state, and one-time spawning.
@@ -195,6 +205,15 @@ normal world-item state, and one-time spawning.
 
 Temporary diagnostics used to establish these causes were removed after the
 transitions and regression tests were added.
+
+For a bounded path-texture diagnostic build, enable `WC3_DEBUG_ROUTING=1` and
+run the relevant engine test. The router reports authored dimensions, stamped
+dimensions, the selected quarter-turn, and live-deck counts for each walkable
+path texture:
+
+```sh
+make WC3_DEBUG_ROUTING=1 test-wc3-engine WC3_PATTERN='wc3_destructable.*'
+```
 
 Scripted-lifecycle tests cover silent dead creation, kill versus remove,
 zero-life death, positive-life restoration, birth/stand animation selection,

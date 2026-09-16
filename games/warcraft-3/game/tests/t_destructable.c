@@ -62,7 +62,6 @@ typedef enum {
 typedef struct {
     DWORD id;
     WORD width, height;
-    DWORD count;
     bridge_axis_t axis;
     LPCSTR mask;
 } human06_bridge_fixture_t;
@@ -111,9 +110,9 @@ static LPCSTR const human06_bridge_extra90_mask =
     "####..............####" "####..............####" "####..............####" "####..............####";
 
 static human06_bridge_fixture_t const human06_bridge_fixtures[] = {
-    { MAKEFOURCC('Y', 'T', '1', '9'), 32, 32, 2, BRIDGE_DIAGONAL, human06_bridge_large135_mask },
-    { MAKEFOURCC('Y', 'T', '2', '0'), 32, 22, 2, BRIDGE_X, human06_bridge_extra0_mask },
-    { MAKEFOURCC('Y', 'T', '2', '2'), 22, 32, 4, BRIDGE_Y, human06_bridge_extra90_mask },
+    { MAKEFOURCC('Y', 'T', '1', '9'), 32, 32, BRIDGE_DIAGONAL, human06_bridge_large135_mask },
+    { MAKEFOURCC('Y', 'T', '2', '0'), 32, 22, BRIDGE_X, human06_bridge_extra0_mask },
+    { MAKEFOURCC('Y', 'T', '2', '2'), 22, 32, BRIDGE_Y, human06_bridge_extra90_mask },
 };
 
 typedef struct {
@@ -503,50 +502,48 @@ TEST(wc3_destructable, human06_bridge_fixtures_cross_from_both_sides) {
     FOR_LOOP(fixture_index, sizeof(human06_bridge_fixtures) / sizeof(human06_bridge_fixtures[0])) {
         human06_bridge_fixture_t const *fixture = &human06_bridge_fixtures[fixture_index];
 
-        FOR_LOOP(instance, fixture->count) {
-            BYTE cells[64 * 64];
-            human06_bridge_pathtex_t pathtex = make_human06_bridge_pathtex(fixture);
-            VECTOR2 axis = fixture->axis == BRIDGE_X ? MAKE(VECTOR2, 0.0f, 1.0f) :
-                fixture->axis == BRIDGE_Y ? MAKE(VECTOR2, 1.0f, 0.0f) : MAKE(VECTOR2, 1.0f, -1.0f);
-            FLOAT const extent = fixture->axis == BRIDGE_DIAGONAL ? 192.0f : 320.0f;
-            VECTOR2 from = MAKE(VECTOR2, -extent * axis.x, -extent * axis.y);
-            VECTOR2 to = fixture->axis == BRIDGE_DIAGONAL ? MAKE(VECTOR2, 320.0f, -192.0f) :
-                MAKE(VECTOR2, extent * axis.x, extent * axis.y);
-            LPEDICT bridge, goal;
-            DWORD generation;
+        BYTE cells[64 * 64];
+        human06_bridge_pathtex_t pathtex = make_human06_bridge_pathtex(fixture);
+        VECTOR2 axis = fixture->axis == BRIDGE_X ? MAKE(VECTOR2, 0.0f, 1.0f) :
+            fixture->axis == BRIDGE_Y ? MAKE(VECTOR2, 1.0f, 0.0f) : MAKE(VECTOR2, 1.0f, -1.0f);
+        FLOAT const extent = fixture->axis == BRIDGE_DIAGONAL ? 192.0f : 320.0f;
+        VECTOR2 from = MAKE(VECTOR2, -extent * axis.x, -extent * axis.y);
+        VECTOR2 to = fixture->axis == BRIDGE_DIAGONAL ? MAKE(VECTOR2, 320.0f, -192.0f) :
+            MAKE(VECTOR2, extent * axis.x, extent * axis.y);
+        LPEDICT bridge, goal;
+        DWORD generation;
 
-            memset(cells, 2, sizeof(cells));
-            reset_entities();
-            setup_test_world();
-            setup_test_pathmap(64, 64, cells);
-            CM_SetupTestWorldBounds(&MAKE(BOX2, .min = {-1024.0f, -1024.0f}, .max = {1024.0f, 1024.0f}));
-            bridge = make_test_destructable(2500.0f, 0.0f, 0.0f);
-            bridge->class_id = fixture->id;
-            bridge->s.class_id = fixture->id;
-            bridge->s.origin2 = (VECTOR2){ 0.0f, 0.0f };
-            bridge->data.DestructableData = &bridge_data;
-            bridge->destructable.alive_pathtex = (pathTex_t *)&pathtex;
-            bridge->pathtex = (pathTex_t *)&pathtex;
-            bridge->targtype = TARG_BRIDGE;
-            G_RegisterGroundSurface(bridge);
-            CM_BakeStaticObstacles();
+        memset(cells, 2, sizeof(cells));
+        reset_entities();
+        setup_test_world();
+        setup_test_pathmap(64, 64, cells);
+        CM_SetupTestWorldBounds(&MAKE(BOX2, .min = {-1024.0f, -1024.0f}, .max = {1024.0f, 1024.0f}));
+        bridge = make_test_destructable(2500.0f, 0.0f, 0.0f);
+        bridge->class_id = fixture->id;
+        bridge->s.class_id = fixture->id;
+        bridge->s.origin2 = (VECTOR2){ 0.0f, 0.0f };
+        bridge->data.DestructableData = &bridge_data;
+        bridge->destructable.alive_pathtex = (pathTex_t *)&pathtex;
+        bridge->pathtex = (pathTex_t *)&pathtex;
+        bridge->targtype = TARG_BRIDGE;
+        G_RegisterGroundSurface(bridge);
+        CM_BakeStaticObstacles();
 
-            T_ASSERT(CM_PointIsPathableForRadius(&from, 0.0f));
-            T_ASSERT(CM_PointIsPathableForRadius(&to, 0.0f));
-            T_ASSERT(CM_LineIsWalkableForRadius(&from, &to, 0.0f));
-            T_ASSERT(CM_LineIsWalkableForRadius(&to, &from, 0.0f));
+        T_ASSERT(CM_PointIsPathableForRadius(&from, 0.0f));
+        T_ASSERT(CM_PointIsPathableForRadius(&to, 0.0f));
+        T_ASSERT(CM_LineIsWalkableForRadius(&from, &to, 0.0f));
+        T_ASSERT(CM_LineIsWalkableForRadius(&to, &from, 0.0f));
 
-            goal = Waypoint_add(&to);
-            generation = CM_BuildHeatmapForRadius(goal, 0.0f);
-            T_ASSERT(generation);
-            T_ASSERT(CM_FlowCanReach(generation, from.x, from.y));
-            goal->s.origin2 = from;
-            goal->s.origin.x = from.x;
-            goal->s.origin.y = from.y;
-            generation = CM_BuildHeatmapForRadius(goal, 0.0f);
-            T_ASSERT(generation);
-            T_ASSERT(CM_FlowCanReach(generation, to.x, to.y));
-        }
+        goal = Waypoint_add(&to);
+        generation = CM_BuildHeatmapForRadius(goal, 0.0f);
+        T_ASSERT(generation);
+        T_ASSERT(CM_FlowCanReach(generation, from.x, from.y));
+        goal->s.origin2 = from;
+        goal->s.origin.x = from.x;
+        goal->s.origin.y = from.y;
+        generation = CM_BuildHeatmapForRadius(goal, 0.0f);
+        T_ASSERT(generation);
+        T_ASSERT(CM_FlowCanReach(generation, to.x, to.y));
     }
 }
 
@@ -571,6 +568,40 @@ TEST(wc3_destructable, human06_yt20_runtime_bridge_crosses_north_to_south) {
 
     T_ASSERT(CM_PointIsPathableForRadius(&deck, 0.0f));
     T_ASSERT(CM_LineIsWalkableForRadius(&from, &to, 32.0f));
+}
+
+TEST(wc3_destructable, bridge_path_texture_rotation_covers_all_quarter_turns) {
+    static DestructableData_t const bridge_data = { .walkable = true };
+    human06_bridge_pathtex_t pathtex = make_human06_bridge_pathtex(&human06_bridge_fixtures[1]);
+
+    FOR_LOOP(angle, 4) {
+        BYTE cells[64 * 64];
+        BOOL const vertical = !(angle & 1);
+        VECTOR2 from = vertical ? MAKE(VECTOR2, 0.0f, -900.0f) : MAKE(VECTOR2, -900.0f, 0.0f);
+        VECTOR2 to = vertical ? MAKE(VECTOR2, 0.0f, 900.0f) : MAKE(VECTOR2, 900.0f, 0.0f);
+        LPEDICT bridge;
+        pathTexTransform_t transform;
+
+        memset(cells, 0, sizeof(cells));
+        if (vertical) FOR_LOOP(y, 32) FOR_LOOP(x, 64) cells[x + (y + 16) * 64] = 2;
+        else FOR_LOOP(y, 64) FOR_LOOP(x, 32) cells[x + 16 + y * 64] = 2;
+        reset_entities(); setup_test_world(); setup_test_pathmap(64, 64, cells);
+        CM_SetupTestWorldBounds(&MAKE(BOX2, .min = {-1024.0f, -1024.0f}, .max = {1024.0f, 1024.0f}));
+        bridge = make_test_destructable(2500.0f, 0.0f, 0.0f);
+        bridge->class_id = MAKEFOURCC('Y', 'T', '2', '0'); bridge->s.class_id = bridge->class_id;
+        bridge->s.origin2 = (VECTOR2){ 0.0f, 0.0f }; bridge->s.angle = angle * (FLOAT)M_PI / 2.0f;
+        bridge->data.DestructableData = &bridge_data;
+        bridge->destructable.alive_pathtex = (pathTex_t *)&pathtex; bridge->pathtex = (pathTex_t *)&pathtex;
+        bridge->targtype = TARG_BRIDGE; G_RegisterGroundSurface(bridge); CM_BakeStaticObstacles();
+        transform = CM_GetPathTexTransform(bridge);
+
+        T_EQ(transform.turn, (angle + 1) % 4);
+        T_EQ(transform.width, vertical ? 22 : 32);
+        T_EQ(transform.height, vertical ? 32 : 22);
+        T_ASSERT(CM_LineIsWalkableForRadius(&from, &to, 0.0f));
+        G_KillDestructable(bridge, NULL);
+        T_ASSERT(!CM_LineIsWalkableForRadius(&from, &to, 0.0f));
+    }
 }
 
 TEST(wc3_destructable, completed_death_holds_authored_final_frame) {
