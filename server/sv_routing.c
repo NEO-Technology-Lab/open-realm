@@ -469,6 +469,24 @@ static BOOL entity_blocks_static_pathing(edict_t const *ent) {
     return !(ent->svflags & SVF_MONSTER) && ent->collision > 0.0f;
 }
 
+#ifdef WC3_DEBUG_ROUTING
+static void routing_debug_bridge(edict_t const *ent, point2_t p) {
+    DWORD blocked = 0, deck = 0;
+    pathTex_t const *pt;
+
+    if (!ent || ent->targtype != TARG_BRIDGE || !(pt = ent->pathtex)) return;
+    FOR_LOOP(y, pt->height) FOR_LOOP(x, pt->width) {
+        if (pt->map[x + y * pt->width].b) blocked++;
+        else if (pathtex_clear_pixel_is_bridge_deck(pt, x, y)) deck++;
+    }
+    fprintf(stderr, "WC3_DEBUG_ROUTING bridge ent=%d id=%.4s pos=%.1f,%.1f cell=%d,%d "
+        "pathtex=%ux%u blocked=%u deck=%u live=%d solid=%d dead=%d\n", ent->s.number,
+        (LPCSTR)&ent->class_id, ent->s.origin2.x, ent->s.origin2.y, p.x, p.y, pt->width, pt->height,
+        blocked, deck, entity_is_live_walkable_surface(ent), ent->destructable.placement_solid,
+        ent->destructable.dead);
+}
+#endif
+
 /* Rebuild current static obstacles from the immutable terrain baseline.  This
  * is normally called once after map spawning, and again only when a static
  * footprint changes (building creation or destructable death). */
@@ -483,8 +501,12 @@ void CM_BakeStaticObstacles(void) {
      * building or destructable footprint due to edict iteration order. */
     FOR_LOOP(i, ge->num_edicts) {
         edict_t *ent = EDICT_NUM(i);
-        if (entity_blocks_static_pathing(ent) && entity_is_live_walkable_surface(ent))
+        if (entity_blocks_static_pathing(ent) && entity_is_live_walkable_surface(ent)) {
             stamp_entity_obstacle(ent, pathmap.original);
+#ifdef WC3_DEBUG_ROUTING
+            if (ent->targtype == TARG_BRIDGE) routing_debug_bridge(ent, LocationToPathMap(&ent->s.origin2));
+#endif
+        }
     }
     FOR_LOOP(i, ge->num_edicts) {
         edict_t *ent = EDICT_NUM(i);
@@ -752,7 +774,16 @@ BOOL CM_PointIsPathableForRadius(LPCVECTOR2 location, FLOAT radius) {
     int tx = (int)floorf(n.x * pathmap.width);
     int ty = (int)floorf(n.y * pathmap.height);
     int radius_cells = (int)ceilf(MAX(0.f, radius) / pathmap_cell_world_size());
-    return is_pathable_node_original_for_radius_cells(tx, ty, radius_cells);
+    if (!is_pathable_node_original_for_radius_cells(tx, ty, radius_cells)) {
+#ifdef WC3_DEBUG_ROUTING
+        BYTE const flags = tx >= 0 && ty >= 0 && tx < (int)pathmap.width && ty < (int)pathmap.height &&
+            pathmap.original[tx + ty * pathmap.width].nowalk ? 2 : 0;
+        fprintf(stderr, "WC3_DEBUG_ROUTING point-blocked pos=%.1f,%.1f cell=%d,%d radius=%.1f flags=0x%02x\n",
+            location->x, location->y, tx, ty, radius, flags);
+#endif
+        return false;
+    }
+    return true;
 }
 
 /* Cheap straight-line walkability test between two world points: walk the
@@ -816,8 +847,15 @@ BOOL CM_LineIsWalkableForRadius(LPCVECTOR2 a, LPCVECTOR2 b, FLOAT radius) {
     int x = ax, y = ay;
     int guard = dx + dy + 2;
     while (guard-- > 0) {
-        if (!is_pathable_node_original_for_radius_cells(x, y, radius_cells))
+        if (!is_pathable_node_original_for_radius_cells(x, y, radius_cells)) {
+#ifdef WC3_DEBUG_ROUTING
+            BYTE const flags = x >= 0 && y >= 0 && x < (int)pathmap.width && y < (int)pathmap.height &&
+                pathmap.original[x + y * pathmap.width].nowalk ? 2 : 0;
+            fprintf(stderr, "WC3_DEBUG_ROUTING line-blocked from=%.1f,%.1f to=%.1f,%.1f cell=%d,%d radius=%.1f flags=0x%02x\n",
+                a->x, a->y, b->x, b->y, x, y, radius, flags);
+#endif
             return false;
+        }
         if (x == bx && y == by) {
             return true;
         }

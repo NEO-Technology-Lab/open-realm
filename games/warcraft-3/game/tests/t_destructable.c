@@ -15,6 +15,7 @@ void setup_test_world(void);
 void reset_entities(void);
 void CM_SetupTestWorldBounds(LPCBOX2 bounds);
 BOOL CM_LineIsWalkableForRadius(LPCVECTOR2 a, LPCVECTOR2 b, FLOAT radius);
+BOOL CM_PointIsPathableForRadius(LPCVECTOR2 location, FLOAT radius);
 DWORD CM_BuildHeatmapForRadius(LPEDICT goalentity, FLOAT radius);
 BOOL CM_FlowCanReach(DWORD generation, FLOAT x, FLOAT y);
 LPEDICT Waypoint_add(LPCVECTOR2 spot);
@@ -89,11 +90,6 @@ static LPCSTR const human06_bridge_large135_mask =
 static LPCSTR const human06_bridge_extra0_mask =
     "################################" "################################"
     "####....####........####....####" "####....####........####....####"
-    "................................" "................................"
-    "................................" "................................"
-    "................................" "................................"
-    "................................" "................................"
-    "................................" "................................"
     "................................" "................................"
     "................................" "................................"
     "................................" "................................"
@@ -536,6 +532,8 @@ TEST(wc3_destructable, human06_bridge_fixtures_cross_from_both_sides) {
             G_RegisterGroundSurface(bridge);
             CM_BakeStaticObstacles();
 
+            T_ASSERT(CM_PointIsPathableForRadius(&from, 0.0f));
+            T_ASSERT(CM_PointIsPathableForRadius(&to, 0.0f));
             T_ASSERT(CM_LineIsWalkableForRadius(&from, &to, 0.0f));
             T_ASSERT(CM_LineIsWalkableForRadius(&to, &from, 0.0f));
 
