@@ -551,17 +551,17 @@ TEST(wc3_destructable, human06_bridge_fixtures_cross_from_both_sides) {
     }
 }
 
-/* Runtime Human06 YT20 at (-800,320) is authored at angle zero.  This is the
- * observed north-to-south approach: the deck is present, but radius-aware
- * routing rejects the bridge endpoint at path cell y=333. */
-TEST(wc3_destructable, human06_yt20_runtime_approach_reaches_bridge_edge) {
+/* Runtime Human06 YT20 at (-800,320) is authored at angle zero.  Its model
+ * runs north-to-south, so the path texture's long axis must be stamped on Y. */
+TEST(wc3_destructable, human06_yt20_runtime_bridge_crosses_north_to_south) {
     static DestructableData_t const bridge_data = { .walkable = true };
     human06_bridge_pathtex_t pathtex = make_human06_bridge_pathtex(&human06_bridge_fixtures[1]);
     BYTE cells[64 * 64];
     VECTOR2 deck = { 4.0f, 0.0f }, from = { 19.0f, 732.0f }, to = { 4.0f, -718.0f };
     LPEDICT bridge;
 
-    memset(cells, 2, sizeof(cells));
+    memset(cells, 0, sizeof(cells));
+    FOR_LOOP(y, 22) FOR_LOOP(x, 64) cells[x + (21 + y) * 64] = 2;
     reset_entities(); setup_test_world(); setup_test_pathmap(64, 64, cells);
     CM_SetupTestWorldBounds(&MAKE(BOX2, .min = {-1024.0f, -1024.0f}, .max = {1024.0f, 1024.0f}));
     bridge = make_test_destructable(2500.0f, 0.0f, 0.0f);
@@ -571,7 +571,7 @@ TEST(wc3_destructable, human06_yt20_runtime_approach_reaches_bridge_edge) {
     bridge->targtype = TARG_BRIDGE; G_RegisterGroundSurface(bridge); CM_BakeStaticObstacles();
 
     T_ASSERT(CM_PointIsPathableForRadius(&deck, 0.0f));
-    T_ASSERT(!CM_LineIsWalkableForRadius(&from, &to, 32.0f));
+    T_ASSERT(CM_LineIsWalkableForRadius(&from, &to, 32.0f));
 }
 
 TEST(wc3_destructable, completed_death_holds_authored_final_frame) {
