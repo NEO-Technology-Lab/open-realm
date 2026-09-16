@@ -8,12 +8,8 @@
  */
 #include "menu_local.h"
 
-static void UIWow_LuaSetInteger(lua_State *L, LPCSTR name, lua_Integer value);
 
-static void UIWow_LuaSetInteger(lua_State *L, LPCSTR name, lua_Integer value) {
-    lua_pushinteger(L, value);
-    lua_setfield(L, -2, name);
-}
+
 
 #include <strings.h>
 
@@ -178,15 +174,7 @@ static int UIWow_LuaDrawBackdrop(lua_State *L) {
     return 0;
 }
 
-static int UIWow_LuaDrawMinimap(lua_State *L) {
-    RECT screen = UIWow_LuaRect(L, 1);
 
-    UIWow_EnsureRenderer();
-    if (wow_ui.renderer && wow_ui.renderer->DrawMinimap) {
-        wow_ui.renderer->DrawMinimap(&screen, NULL);
-    }
-    return 0;
-}
 
 static int UIWow_LuaDrawText(lua_State *L) {
     LPCSTR text = luaL_checkstring(L, 1);
@@ -210,81 +198,8 @@ static int UIWow_LuaDrawText(lua_State *L) {
 }
 
 /* -------------------------------------------------------------------------
- * ow3.player / inventory / actions / misc bindings
+ * Glue utility bindings
  * ---------------------------------------------------------------------- */
-
-static int UIWow_LuaStat(lua_State *L) {
-    DWORD index = (DWORD)luaL_checkinteger(L, 1);
-    lua_pushinteger(L, wow_player && index < MAX_STATS ? wow_player->stats[index] : 0);
-    return 1;
-}
-
-static int UIWow_LuaText(lua_State *L) {
-    DWORD index = (DWORD)luaL_checkinteger(L, 1);
-    LPCSTR text = wow_player && index < PLAYERTEXT_COUNT && wow_player->texts[index] ? wow_player->texts[index] : "";
-    lua_pushstring(L, text);
-    return 1;
-}
-
-static int UIWow_LuaPlayerName(lua_State *L) {
-    lua_pushstring(L, wow_player && wow_player->name && *wow_player->name ? wow_player->name : "Player");
-    return 1;
-}
-
-static void UIWow_LuaSetPlayerField(lua_State *L, LPCSTR name, int stat) {
-    lua_pushinteger(L, wow_player ? wow_player->stats[stat] : 0);
-    lua_setfield(L, -2, name);
-}
-
-static int UIWow_LuaPlayer(lua_State *L) {
-    lua_newtable(L);
-    lua_pushstring(L, wow_player && wow_player->name && *wow_player->name ? wow_player->name : "Player");
-    lua_setfield(L, -2, "name");
-    lua_pushinteger(L, wow_player && wow_player->client_ui_state == CLIENT_UI_GAME ? 1 : 0);
-    lua_setfield(L, -2, "client_ui_state");
-    UIWow_LuaSetPlayerField(L, "health", WOW_STAT_HEALTH);
-    UIWow_LuaSetPlayerField(L, "healthMax", WOW_STAT_HEALTH_MAX);
-    UIWow_LuaSetPlayerField(L, "power", WOW_STAT_POWER);
-    UIWow_LuaSetPlayerField(L, "powerMax", WOW_STAT_POWER_MAX);
-    UIWow_LuaSetPlayerField(L, "level", WOW_STAT_LEVEL);
-    UIWow_LuaSetPlayerField(L, "xp", WOW_STAT_XP);
-    UIWow_LuaSetPlayerField(L, "xpMax", WOW_STAT_XP_MAX);
-    UIWow_LuaSetPlayerField(L, "copper", WOW_STAT_COPPER);
-    UIWow_LuaSetPlayerField(L, "selectedActionSlot", WOW_STAT_SELECTED_ACTION);
-    return 1;
-}
-
-static void UIWow_LuaPushIcon(lua_State *L, uiWowIcon_t const *icon) {
-    lua_newtable(L);
-    lua_pushinteger(L, icon ? icon->image : 0);
-    lua_setfield(L, -2, "image");
-    lua_pushinteger(L, icon ? icon->count : 0);
-    lua_setfield(L, -2, "count");
-    lua_pushinteger(L, icon ? icon->slot : 0);
-    lua_setfield(L, -2, "slot");
-    lua_pushstring(L, icon ? icon->art : "");
-    lua_setfield(L, -2, "art");
-    lua_pushstring(L, icon && icon->name[0] ? icon->name : "");
-    lua_setfield(L, -2, "name");
-}
-
-static int UIWow_LuaInventory(lua_State *L) {
-    lua_newtable(L);
-    FOR_LOOP(i, WOW_UI_INVENTORY_SLOTS) {
-        UIWow_LuaPushIcon(L, &wow_ui.inventory[i]);
-        lua_rawseti(L, -2, (lua_Integer)i + 1);
-    }
-    return 1;
-}
-
-static int UIWow_LuaActions(lua_State *L) {
-    lua_newtable(L);
-    FOR_LOOP(i, WOW_UI_ACTION_SLOTS) {
-        UIWow_LuaPushIcon(L, &wow_ui.actions[i]);
-        lua_rawseti(L, -2, (lua_Integer)i + 1);
-    }
-    return 1;
-}
 
 static int UIWow_LuaTime(lua_State *L) {
     lua_pushinteger(L, wow_ui.time);
@@ -466,7 +381,6 @@ static int UIWow_LuaSelectCharacter(lua_State *L) {
 
 static int UIWow_LuaEnterWorld(lua_State *L) {
     (void)L;
-    UIWow_EnterGameMode();
     UIWow_SetSelectedCharCvars();
     /* The server playercreateinfo table owns race/class -> map; Map.dbc then resolves its client directory. */
     if (mi.Cmd_ExecuteText)
@@ -522,17 +436,10 @@ static luaL_Reg const wow_lua_funcs[] = {
     { "draw_image_additive", UIWow_LuaDrawImageAdditive },
     { "draw_color",          UIWow_LuaDrawColor },
     { "draw_backdrop",       UIWow_LuaDrawBackdrop },
-    { "draw_minimap",        UIWow_LuaDrawMinimap },
     { "draw_text",           UIWow_LuaDrawText },
     { "get_loading_progress",UIWow_LuaGetLoadingProgress },
     { "get_loading_title",   UIWow_LuaGetLoadingTitle },
     { "get_loading_status",  UIWow_LuaGetLoadingStatus },
-    { "stat",                UIWow_LuaStat },
-    { "text",                UIWow_LuaText },
-    { "player_name",         UIWow_LuaPlayerName },
-    { "player",              UIWow_LuaPlayer },
-    { "inventory",        UIWow_LuaInventory },
-    { "actions",          UIWow_LuaActions },
     { "time",             UIWow_LuaTime },
     { "command",          UIWow_LuaCommand },
     { "load_map",         UIWow_LuaLoadMap },
@@ -827,7 +734,6 @@ static BOOL UIWow_HasArchiveFile(LPCSTR path) {
 
 static void UIWow_LoadLegacyMenuLua(void) {
     UIWow_LoadLuaFile("Interface\\FrameXML\\OW3Glue.lua", true);
-    UIWow_LoadLuaFile("Interface\\FrameXML\\GameHUD.lua", true);
     UIWow_LoadLuaFile("Interface\\FrameXML\\LoadingScreen.lua", false);
     UIWow_LoadLuaFile("Interface\\FrameXML\\LoginScreen.lua", false);
     UIWow_LoadLuaFile("Interface\\FrameXML\\CharacterSelectScreen.lua", false);
@@ -871,19 +777,12 @@ void UIWow_InitLua(void) {
 
     lua_newtable(L);
     luaL_setfuncs(L, wow_lua_funcs, 0);
-    UIWow_LuaSetInteger(L, "STAT_HEALTH",     WOW_STAT_HEALTH);
-    UIWow_LuaSetInteger(L, "STAT_HEALTH_MAX", WOW_STAT_HEALTH_MAX);
-    UIWow_LuaSetInteger(L, "STAT_POWER",      WOW_STAT_POWER);
-    UIWow_LuaSetInteger(L, "STAT_POWER_MAX",  WOW_STAT_POWER_MAX);
-    UIWow_LuaSetInteger(L, "STAT_LEVEL",      WOW_STAT_LEVEL);
-    UIWow_LuaSetInteger(L, "STAT_XP",         WOW_STAT_XP);
-    UIWow_LuaSetInteger(L, "STAT_XP_MAX",     WOW_STAT_XP_MAX);
-    UIWow_LuaSetInteger(L, "STAT_COPPER",     WOW_STAT_COPPER);
     lua_setglobal(L, "ow3");
 
     if (UIWow_HasArchiveFile("Interface\\FrameXML\\OW3Glue.lua")) {
         UIWow_Printf("UIWow: using legacy FrameXML menu Lua bootstrap\n");
         UIWow_LoadLegacyMenuLua();
+        snprintf(wow_ui.current_menu, sizeof(wow_ui.current_menu), "%s", "login");
     } else if (UIWow_LoadGlueFrameXml()) {
         UIWow_Printf("UIWow: using GlueXML FrameXML bootstrap\n");
         lua_getglobal(L, "SetGlueScreen");
@@ -927,7 +826,7 @@ void UIWow_CallLuaDraw(void) {
 }
 
 void UIWow_CallLuaUpdate(DWORD msec) {
-    if (!wow_ui.lua || !wow_player || wow_player->client_ui_state != CLIENT_UI_GAME) {
+    if (!wow_ui.lua) {
         if (!wow_ui.lua) {
             UIWow_WarnOnce(WOW_UI_WARN_NO_LUA_STATE, "UIWow: Lua state is not initialized; update callback skipped\n");
         }

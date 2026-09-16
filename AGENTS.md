@@ -289,7 +289,7 @@ Key principles inline:
 - Never use `#ifdef SC2`/`#ifdef WOW`/`#ifdef WC3` (or any per-game macro) to gate *any* code in shared engine
   files (`client/`, `common/`, `renderer/`, `server/`) — not just constants, but branches, command handlers,
   and logic blocks too. If code only matters for one game, it belongs in `games/<game>/`, reached through the
-  existing function-table/vtable boundary (`ui.*`, `re.*`, `gi.*`/`ge.*`, or a new table entry if none exists).
+  existing function-table/vtable boundary (`re.*`, `gi.*`/`ge.*`, or a suitable gameplay interface; never `menu.*` for HUD).
   A shared dispatcher should stay entirely game-agnostic even when only one game currently drives it — other
   games simply never send that command, which is already harmless without a compile guard. Per-game constants
   live in `games/*/common/ui_constants.h` and resolve via the per-game `-I` include path.
@@ -310,15 +310,26 @@ Key principles inline:
 
 ## UI Module Boundary
 
-- **Never use `menu module` for in-game UI.** `menu module` is reserved for the main menu/glue screens and may be unloaded in the future while a game is loading. In-game UI state, input, presentation, and client-owned gameplay widgets belong in `client/`. Use commit `611e3bbb` (`refactor: centralize generic minimap handling`) as the reference implementation for this ownership model.
-- Keep `menu module` focused on loading screens and menu/glue UI. New in-game HUD presentation must be server-authored through
-  `svc_layout`; the generic client may bind declared frames to already-replicated `playerState_t`, `entityState_t`, and configstring
-  data, but `menu module` must not independently construct or populate gameplay HUD widgets.
-- An in-game `menu module` exception is allowed only when `svc_layout`, replicated state/configstrings, and generic client layout bindings
-  demonstrably cannot represent the feature. Mark the implementation at the call site with `/* HACK: */` and explain that specific
-  constraint. Convenience, per-game styling, or client-local mouse/projection state are not sufficient reasons for an exception.
-- Do not add UI import callbacks for mouse polling, loading state polling, layout decoding, or map-info helpers. Use pushed events, `DrawLoadingScreen(map, status, progress)`, client-owned layout functions, and direct `CM_*` calls inside the UI module.
-- Loading-screen ownership stays with `ca_loading`. The client may only enter `ca_active` from `CL_PrepRefresh()` after all required assets are registered.
+- **The menu library is exclusively main-menu/glue UI. No gameplay exceptions.** Never add player/entity snapshots,
+  selected-unit data, HUD update callbacks, gameplay image resolution, or in-game window APIs to `menuImport_t`,
+  `menuExport_t`, or a menu screen controller. `UpdateUnitUI`, `UpdatePlayerState`, and `ResolveImagePath` were
+  architectural violations, not precedents. Do not replace them with renamed or opaque gameplay callbacks.
+- **All in-game UI is game-authored.** HUD, pause/options dialogs, inventory, tooltips, and transient windows are authored
+  in `games/<game>/game/` through `svc_layout` / `svc_window`. The generic client owns drawing, hit testing, focus,
+  local frame bindings, and window interaction. Resolve recipient-specific skin aliases in the game before registering
+  concrete resource paths. If the protocol cannot express a feature, extend its generic contract with tests.
+- **Presentation ownership is exclusive.** `CL_MenuActive()` gates menu drawing, keyboard/text/mouse input, lobby updates,
+  and registered menu commands. Loading and `ca_active` forbid menu execution even when `key_dest == key_menu`.
+  A retained library or cached menu screen does not grant permission to draw or interact. Test active/loading and
+  disconnect/return-to-menu paths through real screen/input/command dispatchers.
+- Do not add menu imports for loading-state polling, layout decoding, mouse polling, or map gameplay state.
+  Loading presentation is game-authored and drawn by the client; only `CL_PrepRefresh()` may activate a prepared world.
+- Run `python3 tools/menu_boundary_audit.py` alongside the engine-boundary audit. Removal of an ABI field must remove
+  its producers, consumers, screen hooks, tests of the obsolete contract, and misleading authoring documentation.
+- The menu library remains loaded, but its resources are shut down on loading and initialized again on return.
+  Commands retain function pointers.
+  Actual unloading requires explicit command unregistration, resource teardown, and safe reload tests; it is not
+  necessary for exclusive presentation. See [menu/HUD boundary](docs/architecture/ui-system.md).
 
 See [docs/ui-authoring.md](docs/ui-authoring.md) for FDF conventions, screen controller patterns, ConsoleUI, and stb_fdf.h.
 

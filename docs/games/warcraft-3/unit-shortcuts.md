@@ -31,6 +31,7 @@ is separate from this shortcut subsystem.
 - is controlled by the viewing player through `G_UnitCanControl()`;
 - has Hero attributes according to `G_UnitIsHero()`;
 - is not a hidden training-queue entity;
+- is not currently hidden through `ShowUnit(false)` / `RF_HIDDEN`;
 - does not have `UnitUI.hideHeroBar` set.
 
 Dead Heroes remain in the roster because Warcraft Hero identity survives death and OpenRealm keeps the Hero edict for revival. A dead Hero cannot become normal selection, but its shortcut can still center the camera on its current location.
@@ -79,7 +80,8 @@ Relevant gameplay transitions mark `dirty`:
 - worker death;
 - Hold Position;
 - training completion;
-- worker visibility/cargo transitions that change idle eligibility.
+- worker visibility/cargo transitions that change idle eligibility;
+- `ShowUnit` visibility transitions for Heroes, so a scripted hidden Hero leaves the roster immediately and returns when shown.
 
 The generic free path calls the invalidation hook, but the hook rejects non-monsters and ordinary non-Hero/non-worker units before touching the player's server-side dirty state. Projectiles, spell effects, destructables, and routine combat-unit destruction therefore do not cause shortcut-roster rescans.
 
@@ -164,7 +166,8 @@ Added unit tests cover the idle-worker predicate and shortcut dirty invalidation
 9. Kill/free/transfer a worker and confirm the count/roster changes.
 10. Give a Hero one or more unspent skill points and confirm the number appears in the lower-right of its shortcut; spend the final point and confirm the number disappears.
 11. Damage the owned Hero and confirm its shortcut pulses red for several flashes without affecting the portrait art or selection behavior. Repeated damage should refresh the warning window.
-12. Kill and revive a Hero and confirm its persistent shortcut remains available.
+12. Hide a Hero with `ShowUnit(hero, false)` and confirm its shortcut disappears; show it again and confirm the shortcut returns.
+13. Kill and revive a Hero and confirm its persistent shortcut remains available.
 
 No local compile or test execution is required to update this document; use the repository test commands in `CONTRIBUTING.md` when validating a built tree.
 

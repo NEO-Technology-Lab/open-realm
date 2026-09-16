@@ -156,30 +156,22 @@ void SCR_DrawScreenField(DWORD msec) {
         re.EndFrame();
         return;
     }
-    if (menu.UpdatePlayerState)
-        menu.UpdatePlayerState(&cl.playerstate);
-
     switch (cls.state) {
     default:
         Com_Error(ERR_FATAL, "SCR_DrawScreenField: bad cls.state");
         break;
     case ca_disconnected:
-        menu.Refresh(cl.time);
+        if (CL_MenuActive()) menu.Refresh(cl.time);
         break;
     case ca_connecting:
     case ca_connected:
         if (cl.playerstate.client_ui_state == CLIENT_UI_LOADING) SCR_DrawLoadingLayout();
-        else menu.Refresh(cl.time);
+        else if (CL_MenuActive()) menu.Refresh(cl.time);
         break;
     case ca_active:
         V_RenderView();
         if (Cvar_Integer("r_hud", 1)) {
             SCR_DrawLayout();
-        }
-        /* TODO: research whether to replace key_dest enum with a keyCatchers bitmask
-        * like Q3 — multiple input consumers can be active simultaneously. */
-        if (cls.key_dest == key_menu) {
-            menu.Refresh(cl.time);
         }
         break;
     }
@@ -1668,70 +1660,19 @@ BOOL SCR_LayoutHitTest(int x, int y) {
     return false;
 }
 
-/* --------------------------------------------------------------------------
- * Legacy unit UI response parser.
- *
- * Normal selection HUD updates are local now; this parser is retained for
- * compatibility with svc_unit_ui messages.
- * -------------------------------------------------------------------------- */
-
+/* Consume the old wire shape to preserve packet alignment; current games author svc_layout. */
 void CL_ParseUnitUI(LPSIZEBUF msg) {
-    BYTE num_units = MSG_ReadByte(msg);
-
-    if (num_units == 0 || num_units > 12) {
-        if (num_units == 0 && menu.UpdateUnitUI) {
-            menu.UpdateUnitUI(0, NULL);
-        }
-        return;
-    }
-
-    menuUnitData_t *units = (menuUnitData_t *)MemAlloc(sizeof(menuUnitData_t) * num_units);
-    memset(units, 0, sizeof(menuUnitData_t) * num_units);
-
-    for (BYTE i = 0; i < num_units; i++) {
-        menuUnitData_t *unit = &units[i];
-        unit->entity_num = MSG_ReadShort(msg);
-
-        unit->num_buttons = MSG_ReadByte(msg);
-        if (unit->num_buttons > MAX_COMMAND_BUTTONS) {
-            unit->num_buttons = MAX_COMMAND_BUTTONS;
-        }
-        for (BYTE j = 0; j < unit->num_buttons; j++) {
-            menuCommandButton_t *btn = &unit->buttons[j];
-
-            strncpy(btn->art, MSG_ReadString2(msg), sizeof(btn->art) - 1);
-            strncpy(btn->tooltip, MSG_ReadString2(msg), sizeof(btn->tooltip) - 1);
-            strncpy(btn->ubertip, MSG_ReadString2(msg), sizeof(btn->ubertip) - 1);
-            strncpy(btn->command, MSG_ReadString2(msg), sizeof(btn->command) - 1);
-            btn->hotkey = MSG_ReadByte(msg);
-        }
-
-        unit->num_inventory = MSG_ReadByte(msg);
-        if (unit->num_inventory > MAX_INVENTORY_SLOTS) {
-            unit->num_inventory = MAX_INVENTORY_SLOTS;
-        }
-        for (BYTE j = 0; j < unit->num_inventory; j++) {
-            menuInventoryItem_t *item = &unit->inventory[j];
-
-            strncpy(item->art, MSG_ReadString2(msg), sizeof(item->art) - 1);
-            strncpy(item->tooltip, MSG_ReadString2(msg), sizeof(item->tooltip) - 1);
-            strncpy(item->ubertip, MSG_ReadString2(msg), sizeof(item->ubertip) - 1);
-            item->slot = MSG_ReadByte(msg);
-        }
-
-        unit->num_queue = MSG_ReadByte(msg);
-        if (unit->num_queue > MAX_BUILD_QUEUE_ITEMS) {
-            unit->num_queue = MAX_BUILD_QUEUE_ITEMS;
-        }
-        for (BYTE j = 0; j < unit->num_queue; j++) {
-            menuQueueItem_t *queue_item = &unit->queue[j];
-            LPCSTR art = MSG_ReadString2(msg);
-
-            strncpy(queue_item->art, art, sizeof(queue_item->art) - 1);
-            queue_item->entity = MSG_ReadShort(msg);
+    int count = MSG_ReadByte(msg);
+    if (count) fprintf(stderr, "CL_ParseUnitUI: obsolete HUD packet; server must author svc_layout\n");
+    for (int i = 0; i < count && msg->readcount < msg->cursize; i++) {
+        MSG_ReadShort(msg);
+        for (int kind = 0; kind < 3; kind++) {
+            int items = MSG_ReadByte(msg), strings = kind == 0 ? 4 : kind == 1 ? 3 : 1;
+            for (int j = 0; j < items && msg->readcount < msg->cursize; j++) {
+                for (int k = 0; k < strings; k++) MSG_ReadString2(msg);
+                if (kind == 2) MSG_ReadShort(msg);
+                else MSG_ReadByte(msg);
+            }
         }
     }
-
-    menu.UpdateUnitUI((DWORD)num_units, units);
-    MemFree(units);
 }

@@ -5,45 +5,6 @@
  */
 #include "menu_local.h"
 
-/* -------------------------------------------------------------------------
- * Map background texture
- * ---------------------------------------------------------------------- */
-
-void UIWow_UpdateMapBackground(LPCPLAYER ps) {
-    static LPCSTR default_bg = "Interface\\Glues\\LoadingScreens\\LoadScreenEnviroment.blp";
-    LPCSTR screen_path;
-
-    (void)ps;
-
-    LPCSTR info = mi.GetConfigString(WOW_CS_MAPINFO);
-    LPCSTR preview = Wow_InfoValueForKey(info, "preview", "");
-    LPCSTR map_path = *preview ? preview : default_bg;
-
-    if (!strcmp(wow_ui.active_map, map_path)) {
-        return;
-    }
-    snprintf(wow_ui.active_map, sizeof(wow_ui.active_map), "%s", map_path);
-
-    screen_path = map_path;
-
-    if (!wow_ui.renderer) {
-        UIWow_WarnOnce(WOW_UI_WARN_NO_RENDERER, "UIWow: loading background update skipped because renderer is unavailable\n");
-        return;
-    }
-
-    SAFE_DELETE(wow_ui.textures[WOW_UI_TEX_BACKGROUND], wow_ui.renderer->ReleaseTexture);
-    wow_ui.textures[WOW_UI_TEX_BACKGROUND] = wow_ui.renderer->LoadTexture(screen_path);
-    if (!wow_ui.textures[WOW_UI_TEX_BACKGROUND]) {
-        UIWow_Printf("UIWow: failed loading map background '%s', trying default\n", screen_path);
-        wow_ui.textures[WOW_UI_TEX_BACKGROUND] = wow_ui.renderer->LoadTexture(default_bg);
-        if (!wow_ui.textures[WOW_UI_TEX_BACKGROUND]) {
-            UIWow_WarnOnce(WOW_UI_WARN_NO_LOAD_BACKGROUND, "UIWow: failed loading default loading background '%s'\n", default_bg);
-        }
-    }
-
-    UIWow_Printf("UIWow: loading screen map=%s background=%s\n", wow_ui.active_map[0] ? wow_ui.active_map : "<none>", screen_path);
-}
-
 /* Classic WoW creates loading presentation outside FrameXML, so keep this renderer-owned runtime path. */
 
 void UIWow_DrawLoadingScreenC(LPCSTR map, LPCSTR status, FLOAT progress) {

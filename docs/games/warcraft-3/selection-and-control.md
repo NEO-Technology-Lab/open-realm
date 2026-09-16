@@ -139,11 +139,39 @@ order-response selection. The complete selection remains authoritative for
 multi-unit Smart/Move/Attack-style orders. Inventory presentation follows the
 same focused-unit rule; see [Inventory And World Items](inventory-and-items.md).
 
-OpenRealm still does not reproduce Warsmash's focused/unfocused icon scaling,
-keyboard subgroup cycling, or the Warsmash behavior where clicking the
-already-focused exact icon collapses the group to that one unit. Those are
-presentation/navigation gaps, not reasons to merge inventory state across the
-group.
+`Tab` cycles the focused subgroup in the same Warsmash-compatible order used by
+the multiselect panel. It advances to the first selected unit of the next unit
+type, wraps from the final subgroup to the first, and leaves selection membership
+unchanged. A selection containing only one unit type is unaffected. The command
+reuses the normal focus refresh path, so subgroup highlight, portrait, inventory,
+and command card stay synchronized, and a successful change plays the authored
+`SubGroupSelectionChange` UI sound.
+
+OpenRealm still does not reproduce Warsmash's focused/unfocused icon scaling or
+the behavior where clicking the already-focused exact icon collapses the group
+to that one unit. Those are presentation/navigation gaps, not reasons to merge
+inventory state across the group.
+
+### Same-type selection
+
+WC3 enables `cl_same_type_select` in its game config. Ctrl+clicking a world unit,
+or clicking the same unit twice within 500 ms without Shift, expands selection
+to matching units whose entity origins are inside the current rendered world
+viewport. The shared client sends the clicked entity as the authoritative type
+anchor plus visible candidate entity numbers. It may use snapshot `class_id` as
+a bandwidth/candidate-budget pre-filter, but `CMD_Select` resolves the anchor's
+current `class_id` server-side, discards candidates of other types, then runs the
+ordinary selectability, relationship, ordering, 12-unit cap, event, sound, and
+`svc_set_selection` reconciliation paths.
+
+The client deliberately does not treat render models or snapshot `class_id` as
+authoritative gameplay state. While a target command is armed, the existing
+`select` target path consumes only the clicked anchor; extra `sametype` tokens
+and candidates cannot turn a spell target click into a selection change. Same-
+type expansion is currently unshifted only because Shift-click selection toggle
+semantics remain a known gap; Shift-modified target clicks retain the existing
+queue path. A drag, ground click, minimap click, or gameplay-UI click breaks the
+double-click chain.
 
 ## Relationship Presentation
 
@@ -228,7 +256,6 @@ The following are deliberately not inferred by the current implementation:
 
 - invisibility/detection-aware selectability (`IsUnitDetected`/`IsUnitInvisible` coverage is incomplete);
 - Shift-click toggle semantics (Shift-drag addition exists separately);
-- Ctrl-click and double-click same-type expansion;
 - exact Warsmash within-identical-type insertion ordering (selection membership currently retains only per-player bits, so stable ties use edict scan order);
 - exact neutral-shop `Aneu` patron-selection button/indicator and persistent per-player patron state; the current deterministic nearby-patron purchase flow is documented in [Neutral Item Shops](neutral-shops.md);
 - data-driven `SelectionCircle` relationship colours;
@@ -249,7 +276,7 @@ Do not bypass these gaps by weakening `G_UnitCanControl` or by restoring owner c
 
 ## Verification
 
-In-engine coverage is in `games/warcraft-3/game/tests/t_api.c` and `t_unit.c` for relationship classification, visible foreign selectability, shared-control authority, dead-unit non-selectability, selection removal, Hero revival restoring selectability, selection/deselection JASS event deltas, and Warsmash priority/level/canonical-rawcode multiselect ordering. `t_items.c` additionally covers mixed-selection Smart item pickup with a non-inventory unit first in the selection.
+In-engine coverage is in `games/warcraft-3/game/tests/t_api.c` and `t_unit.c` for relationship classification, visible foreign selectability, shared-control authority, dead-unit non-selectability, selection removal, Hero revival restoring selectability, selection/deselection JASS event deltas, same-type server filtering, and Warsmash priority/level/canonical-rawcode multiselect ordering. Shared `client_input` coverage drives the real click-release path for Ctrl-click and double-click same-type packet generation and viewport candidate filtering. `t_items.c` additionally covers mixed-selection Smart item pickup with a non-inventory unit first in the selection.
 
 Useful targeted commands after building the test binary:
 

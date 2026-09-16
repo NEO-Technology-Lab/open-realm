@@ -777,7 +777,7 @@ static void CL_ParseLobbySetup(LPSIZEBUF msg) {
     if (!state.map_path[0]) {
         return;
     }
-    menu.UpdateLobbySetup(&state);
+    if (CL_MenuActive()) menu.UpdateLobbySetup(&state);
 }
 
 static void CL_ParseConsolePrint(LPSIZEBUF msg) {
@@ -827,7 +827,6 @@ static void CL_ParseSetSelection(LPSIZEBUF msg) {
         }
     }
     cl.selection.num_selected = selected;
-    if (menu.UpdateUnitUI) menu.UpdateUnitUI(0, NULL);
 }
 
 /* Read the Quake 2 sound packet contract and resolve entity-relative origins
@@ -984,7 +983,7 @@ static void CL_ParseUIWindow(LPSIZEBUF msg) {
     char window_id[64];
     MSG_ReadStringN(msg, window_id, sizeof(window_id));
     int show = MSG_ReadByte(msg);
-    if (menu.ShowWindow) menu.ShowWindow(window_id, show);
+    fprintf(stderr, "CL_ParseUIWindow: obsolete menu window %s (%d); use svc_window\n", window_id, show);
 }
 
 /* Dispatch loop for a complete server message buffer.  Each iteration reads

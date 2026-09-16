@@ -55,14 +55,13 @@ layout.
 - If a required root frame is missing, fail fast for that screen and skip further scene setup/update work.
 - Keep frame names data-driven by FDF; avoid hardcoded lookup strings when macro-based lookup can use the frame identifier directly.
 
-## ConsoleUI Screen Controller (In-Game HUD)
+## Game-Authored HUD
 
-- `ui/screens/console_ui.c` is the client-side replacement for the server-authored `hud/hud.c` HUD.
-- Loads Blizzard's ConsoleUI.fdf, ResourceBar.fdf, UpperButtonBar.fdf, InfoPanelUnitDetail.fdf, InfoPanelBuildingDetail.fdf, InfoPanelItemDetail.fdf, and SimpleInfoPanel.fdf from MPQ at runtime via `UI_EnsureFDF()`.
-- Binds player state (gold, lumber, food) via the explicit menu state update path.
-- Receives unit selection/command data via `update_unit_ui` callback from `svc_unit_ui` messages.
-- Draw path: `UI_DrawFrames()` renders FDF FRAMEDEF trees. This is the only draw path for the in-game HUD.
-- Wire into game mode via `UI_EnterGameMode()` in `menu_main.c`, which calls `consoleUIScreen.load()` and `consoleUIScreen.init()`. The `UI_RefreshLocal()` and `UI_UpdateUnitUILocal()` functions route to the screen during game mode.
+ConsoleUI and its resource, command, inventory, and information panels are authored by
+`games/warcraft-3/game/hud/`. The game parses FDF and emits `svc_layout`; the generic client draws and interacts
+with those frames. Dynamic fields use replicated state bindings or updated server-authored frames.
+In-game dialogs use `svc_window`. Do not create ConsoleUI controllers or player-state callbacks in the menu library.
+See [the exclusive menu/HUD boundary](architecture/ui-system.md).
 
 ## stb_fdf.h Pattern
 

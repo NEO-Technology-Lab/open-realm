@@ -124,20 +124,24 @@ DWORD ShowUnit(LPJASS j) {
     LPEDICT whichUnit = jass_checkhandle(j, 1, "unit");
     BOOL show = jass_checkboolean(j, 2);
     BOOL was_hidden;
-    BOOL was_idle;
+    BOOL is_hidden;
     if (!whichUnit) {
         return 0;
     }
-    was_idle = G_UnitIsIdleWorker(whichUnit);
     was_hidden = !!(whichUnit->s.renderfx & RF_HIDDEN);
     if (show) {
         whichUnit->s.renderfx &= ~RF_HIDDEN;
     } else {
         whichUnit->s.renderfx |= RF_HIDDEN;
     }
-    if ((whichUnit->s.flags & EF_FOW_BLOCKER) && was_hidden != !!(whichUnit->s.renderfx & RF_HIDDEN))
-        G_FowMarkBlockersDirty();
-    if (was_idle != G_UnitIsIdleWorker(whichUnit)) G_InvalidateUnitShortcutsForUnit(whichUnit);
+    is_hidden = !!(whichUnit->s.renderfx & RF_HIDDEN);
+    if (was_hidden != is_hidden) {
+        if (whichUnit->s.flags & EF_FOW_BLOCKER) G_FowMarkBlockersDirty();
+        /* Visibility is part of both Hero-shortcut and idle-worker eligibility.
+         * Rebuild only on a real transition; the shared hook cheaply rejects
+         * ordinary non-Hero/non-worker units. */
+        G_InvalidateUnitShortcuts(G_GetPlayerClientByNumber(whichUnit->s.player));
+    }
     return 0;
 }
 

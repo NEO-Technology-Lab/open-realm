@@ -1869,6 +1869,27 @@ TEST(wc3_api, enable_user_ui_does_not_block_world_selection) {
     currentplayer = NULL;
 }
 
+TEST(wc3_api, same_type_selection_filters_candidates_by_anchor_type) {
+    LPGAMECLIENT gc = &game.clients[0];
+    LPEDICT first = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 64.0f, 64.0f);
+    LPEDICT second = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 96.0f, 64.0f);
+    LPEDICT other = alloc_test_unit(MAKEFOURCC('h','p','e','a'), 128.0f, 64.0f);
+    char first_number[16], second_number[16], other_number[16];
+    LPCSTR command[] = { "select", first_number, "sametype", first_number, second_number, other_number };
+
+    gc->ps.number = 0;
+    first->s.player = second->s.player = other->s.player = 0;
+    first->svflags |= SVF_MONSTER; second->svflags |= SVF_MONSTER; other->svflags |= SVF_MONSTER;
+    snprintf(first_number, sizeof(first_number), "%u", first->s.number);
+    snprintf(second_number, sizeof(second_number), "%u", second->s.number);
+    snprintf(other_number, sizeof(other_number), "%u", other->s.number);
+
+    globals.ClientCommand(&g_edicts[0], 6, command);
+    T_ASSERT(G_IsEntitySelected(gc, first));
+    T_ASSERT(G_IsEntitySelected(gc, second));
+    T_ASSERT(!G_IsEntitySelected(gc, other));
+}
+
 TEST(wc3_api, client_selection_publishes_selection_events_once_per_delta) {
     LPGAMECLIENT gc = &game.clients[0];
     LPEDICT first = alloc_test_unit(MAKEFOURCC('h','p','e','a'), 64.0f, 64.0f);
@@ -2488,6 +2509,61 @@ TEST(wc3_api, multiselect_focus_tracks_one_selected_unit_and_falls_back_when_rem
     T_ASSERT(!G_FocusSelectedUnit(client, second));
 }
 
+TEST(wc3_api, tab_cycle_advances_unit_type_subgroups_and_wraps) {
+    LPGAMECLIENT client = &game.clients[0];
+    LPEDICT footman_first = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0, 0);
+    LPEDICT footman_second = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 32, 0);
+    LPEDICT knight = alloc_test_unit(MAKEFOURCC('h','k','n','i'), 64, 0);
+    LPEDICT paladin = alloc_test_unit(MAKEFOURCC('H','p','a','l'), 96, 0);
+    UnitData_t footman_data = { .priority = 3 };
+    UnitData_t knight_data = { .priority = 2 };
+    UnitData_t paladin_data = { .priority = 1 };
+
+    client->ps.number = 0;
+    G_ResetSelectionFocus(client);
+    footman_first->data.UnitData = footman_second->data.UnitData = &footman_data;
+    knight->data.UnitData = &knight_data;
+    paladin->data.UnitData = &paladin_data;
+
+    LPEDICT units[] = { footman_first, footman_second, knight, paladin };
+    FOR_LOOP(i, sizeof(units) / sizeof(units[0])) {
+        units[i]->s.player = 0;
+        units[i]->svflags |= SVF_MONSTER;
+        G_SelectEntity(client, units[i]);
+    }
+
+    T_ASSERT(G_GetMainSelectedUnit(client) == footman_first);
+    T_ASSERT(G_CycleSelectionSubgroup(client));
+    T_ASSERT(G_GetMainSelectedUnit(client) == knight);
+    T_ASSERT(G_CycleSelectionSubgroup(client));
+    T_ASSERT(G_GetMainSelectedUnit(client) == paladin);
+    T_ASSERT(G_CycleSelectionSubgroup(client));
+    T_ASSERT(G_GetMainSelectedUnit(client) == footman_first);
+
+    /* Cycling focus must not mutate authoritative selection membership. */
+    FOR_LOOP(i, sizeof(units) / sizeof(units[0])) {
+        T_ASSERT(G_IsEntitySelected(client, units[i]));
+    }
+}
+
+TEST(wc3_api, tab_cycle_is_noop_for_single_type_selection) {
+    LPGAMECLIENT client = &game.clients[0];
+    LPEDICT first = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0, 0);
+    LPEDICT second = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 32, 0);
+
+    client->ps.number = 0;
+    first->s.player = second->s.player = 0;
+    first->svflags |= SVF_MONSTER;
+    second->svflags |= SVF_MONSTER;
+    G_ResetSelectionFocus(client);
+    G_SelectEntity(client, first);
+    G_SelectEntity(client, second);
+
+    T_ASSERT(G_GetMainSelectedUnit(client) == first);
+    T_ASSERT(!G_CycleSelectionSubgroup(client));
+    T_ASSERT(G_GetMainSelectedUnit(client) == first);
+}
+
 TEST(wc3_api, multiselect_order_matches_warsmash_priority_level_and_rawcode) {
     LPGAMECLIENT client = &game.clients[0];
     LPEDICT low_priority = alloc_test_unit(MAKEFOURCC('h','p','e','a'), 0, 0);
@@ -3016,6 +3092,39 @@ TEST(wc3_api, unit_hidden_clear) {
     ent->s.renderfx &= ~RF_HIDDEN;
     T_ASSERT(!(ent->s.renderfx & RF_HIDDEN));
 }
+
+TEST(wc3_api, show_unit_visibility_transition_invalidates_hero_shortcuts) {
+    LPGAMECLIENT client = &game.clients[0];
+    LPEDICT hero = NULL;
+
+    reset_entities();
+    setup_test_world();
+    client->ps.number = 0;
+
+    T_ASSERT(run_test_jass(
+        "globals\n"
+        "  unit testHero\n"
+        "endglobals\n"
+        "function hideHero takes nothing returns nothing\n"
+        "  call ShowUnit(testHero, false)\n"
+        "endfunction\n"
+        "function main takes nothing returns nothing\n"
+        "  set testHero = CreateUnit(Player(0), 'Hpal', 64.0, 64.0, 0.0)\n"
+        "endfunction\n"));
+
+    FOR_LOOP(i, globals.num_edicts)
+        if (g_edicts[i].class_id == MAKEFOURCC('H','p','a','l') && g_edicts[i].s.player == 0) hero = &g_edicts[i];
+    T_NOT_NULL(hero);
+    T_ASSERT(!(hero->s.renderfx & RF_HIDDEN));
+
+    client->shortcuts.dirty = false;
+    jass_callbyname(level.vm, "hideHero", true);
+    jass_runevents(level.vm);
+
+    T_ASSERT(hero->s.renderfx & RF_HIDDEN);
+    T_ASSERT(client->shortcuts.dirty);
+}
+
 
 /* =========================================================================
  * Group — FirstOfGroup / IsUnitInGroup

@@ -854,9 +854,11 @@ BOOL CL_WindowKeyEvent(int key) {
     clientWindow_t *window = CL_WindowModal();
     int upper = toupper(key);
     RECT root;
+    BOOL modal;
 
     if (!window) window = cl_windows.focus;
     if (!window) return false;
+    modal = window->flags & UI_WINDOW_MODAL;
     if (cl_windows.edit_window == window && cl_windows.edit_frame) {
         clientWindowEdit_t *value = NULL;
         FOR_LOOP(i, window->num_edit_values)
@@ -867,8 +869,18 @@ BOOL CL_WindowKeyEvent(int key) {
                 .max_chars = value->max_chars, .cursor = value->cursor,
             };
             if (key == 8) { M_TextInput_Backspace(&ti); value->cursor = ti.cursor; return true; }
-            if (key == K_LEFTARROW) { M_TextInput_MoveCursor(&ti, -1); value->cursor = ti.cursor; return true; }
-            if (key == K_RIGHTARROW) { M_TextInput_MoveCursor(&ti, 1); value->cursor = ti.cursor; return true; }
+            /* Non-modal gameplay windows must not turn WC3's horizontal
+             * camera arrows into local edit-cursor movement. Up/Down already
+             * fall through this edit path; keep Left/Right symmetric with
+             * them while modal edit dialogs retain normal cursor control. */
+            if (key == K_LEFTARROW) {
+                if (!modal) return false;
+                M_TextInput_MoveCursor(&ti, -1); value->cursor = ti.cursor; return true;
+            }
+            if (key == K_RIGHTARROW) {
+                if (!modal) return false;
+                M_TextInput_MoveCursor(&ti, 1); value->cursor = ti.cursor; return true;
+            }
             if (key == K_ENTER || key == K_TAB) { CL_WindowBlurEdit(); return true; }
             if (key == K_ESCAPE) { CL_WindowBlurEdit(); return true; }
         }
@@ -893,7 +905,7 @@ BOOL CL_WindowKeyEvent(int key) {
             return true;
         }
     }
-    return window->flags & UI_WINDOW_MODAL;
+    return modal;
 }
 
 

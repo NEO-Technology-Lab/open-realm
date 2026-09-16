@@ -20,7 +20,6 @@ typedef struct uiScreen_s {
     void (*refresh)(int msec);
     void (*draw)(void);
     void (*key_event)(int key, BOOL down);
-    void (*update_unit_ui)(DWORD num_units, menuUnitData_t *units);
 } uiScreen_t;
 
 /* Screen implementations */

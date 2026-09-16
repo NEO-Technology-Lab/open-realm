@@ -1302,50 +1302,6 @@ static void Wow_UpdatePlayerHud(LPEDICT ent) {
     else if (local->loot_anim_timer) { local->loot_anim_timer = 0; Wow_SetStandMove(ent); }
 }
 
-static void Wow_WriteHudIcon(wowHudIcon_t const *icon, DWORD slot) {
-    char command[64];
-    char count[32];
-
-    snprintf(command, sizeof(command), "wow_action %u", (unsigned)slot);
-    snprintf(count, sizeof(count), "%u", (unsigned)icon->count);
-    gi.Write(PF_STRING, icon->icon);
-    gi.Write(PF_STRING, icon->name);
-    gi.Write(PF_STRING, count);
-    gi.Write(PF_STRING, command);
-    gi.Write(PF_BYTE, &(LONG){ slot < 9 ? '1' + (LONG)slot : slot == 9 ? '0' : 0 });
-}
-
-static void Wow_WriteInventoryIcon(wowHudIcon_t const *icon, DWORD slot) {
-    char count[32];
-
-    snprintf(count, sizeof(count), "%u", (unsigned)icon->count);
-    gi.Write(PF_STRING, icon->icon);
-    gi.Write(PF_STRING, icon->name);
-    gi.Write(PF_STRING, count);
-    gi.Write(PF_BYTE, &(LONG){ slot });
-}
-
-static void Wow_SendPlayerUi(LPEDICT ent) {
-    wowClient_t *client = &wow_clients[0];
-
-    if (!ent || !gi.Write || !gi.unicast) {
-        return;
-    }
-    gi.Write(PF_BYTE, &(LONG){ svc_unit_ui });
-    gi.Write(PF_BYTE, &(LONG){ 1 });
-    gi.Write(PF_SHORT, &(LONG){ ent->s.number });
-    gi.Write(PF_BYTE, &(LONG){ WOW_UI_ACTION_SLOTS });
-    FOR_LOOP(slot, WOW_UI_ACTION_SLOTS) {
-        Wow_WriteHudIcon(&client->actions[slot], slot);
-    }
-    gi.Write(PF_BYTE, &(LONG){ WOW_UI_INVENTORY_SLOTS });
-    FOR_LOOP(slot, WOW_UI_INVENTORY_SLOTS) {
-        Wow_WriteInventoryIcon(&client->inventory[slot], slot);
-    }
-    gi.Write(PF_BYTE, &(LONG){ 0 });
-    gi.unicast(ent);
-}
-
 static void Wow_MovePlayerFrame(LPEDICT ent) {
     Wow_AdvanceEntityFrame(ent);
 }
@@ -2240,7 +2196,6 @@ static void Wow_ClientCommand(LPEDICT ent, DWORD argc, LPCSTR argv[]) {
                 LPEDICT corpse = Wow_EdictByNumber(client->loot_target);
                 wowEntityLocal_t *cl = corpse ? Wow_EntityLocal(corpse) : NULL;
                 if (cl && cl->loot_items[slot].icon[0]) { cl->loot_items[slot].icon[0] = '\0'; cl->loot_count--; }
-                Wow_SendPlayerUi(ent);
             }
             client->loot_snap[slot].icon[0] = '\0';
             /* Close window when all items have been taken. */
@@ -2423,8 +2378,7 @@ static void Wow_ClientCommand(LPEDICT ent, DWORD argc, LPCSTR argv[]) {
             cl->gcd_time = WOW_GCD_MS;
             if (def->cast) def->cast(ent, target);
         }
-    } else if (argc >= 2 && !strcasecmp(argv[0], "window_close")) {
-        UI_HideWindow(ent, argv[1]);
+
     }
 }
 
@@ -2496,7 +2450,6 @@ static void Wow_ClientBegin(LPEDICT ent) {
     }
     ent->client = &wow_clients[0].client;
     ent->client->ps.client_ui_state = CLIENT_UI_GAME;
-    Wow_SendPlayerUi(ent);
     UI_WriteWowHud(ent);
     UI_WriteWowHover(ent);
     UI_WriteWelcomeWindow(ent);

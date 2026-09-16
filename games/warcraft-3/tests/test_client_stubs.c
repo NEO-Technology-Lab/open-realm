@@ -77,6 +77,26 @@ void CON_printf(LPCSTR fmt, ...) {
 }
 BOOL CL_GameplayInputReady(void) { return false; }
 BOOL CL_MovieKeyEvent(keyCode_t key, bool down) { (void)key; (void)down; return false; }
+BOOL CL_GameBuildSameTypeSelection(gameSameTypeSelection_t *selection) {
+    DWORD count = 0;
+    DWORD class_id;
+
+    if (!selection || !selection->command || selection->command_size < 2 || !selection->visible_count)
+        return false;
+    class_id = cl.ents[selection->anchor].current.class_id;
+    snprintf(selection->command, selection->command_size, "select %u sametype", selection->anchor);
+    FOR_LOOP(i, selection->visible_count) {
+        DWORD const number = selection->visible[i];
+        size_t used;
+        if (!number || number == selection->anchor || number >= MAX_CLIENT_ENTITIES ||
+            cl.ents[number].current.class_id != class_id || count >= MIN(selection->limit, 61)) continue;
+        used = strlen(selection->command);
+        if (used + 12 >= selection->command_size) break;
+        snprintf(selection->command + used, selection->command_size - used, " %u", number);
+        count++;
+    }
+    return true;
+}
 /* Transient-window tests exercise focus without owning a real SDL text-input session. */
 void CL_SetTransientTextInput(BOOL enabled) { (void)enabled; }
 
@@ -104,7 +124,6 @@ cvar_t *Cvar_Set(LPCSTR name, LPCSTR value) {
 void CL_ParseTEnt(LPSIZEBUF msg) { (void)msg; }
 void CL_BeginLoadingMap(LPCSTR mapName) { (void)mapName; cl.playerstate.client_ui_state = CLIENT_UI_LOADING; cls.state = ca_connected; cl.num_active = 0; }
 void CL_SetGameplayInput(void) { cls.key_dest = key_game; }
-LPCSTR CL_ResolveImagePath(LPCSTR imageName) { return imageName; }
 void CL_ReloadImageResources(void) {}
 void CL_Disconnect(LPCSTR reason, BOOL notify) { (void)reason; (void)notify; cls.state = ca_disconnected; }
 void CL_EntityEvent(entityState_t const *ent) { (void)ent; }

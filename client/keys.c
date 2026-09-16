@@ -131,7 +131,7 @@ void Key_Event(keyCode_t key, DWORD mods, bool down, DWORD time) {
     if (CL_MovieKeyEvent(key, down)) return;
 
     /* Forward to UI library if in menu mode */
-    if (cls.key_dest == key_menu && menu.KeyEvent) {
+    if (CL_MenuActive() && cls.key_dest == key_menu && menu.KeyEvent) {
         menu.KeyEvent(key, down, time);
         return;
     }

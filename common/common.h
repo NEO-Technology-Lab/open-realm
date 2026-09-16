@@ -307,6 +307,14 @@ BOOL CL_GameDefaultCamera(gameCamera_t *camera);
 BOOL CL_GameCameraUsesWorldUp(void);
 FLOAT CL_GameLerpDegrees(FLOAT a, FLOAT b, FLOAT fraction);
 BOOL CL_GameBuildCursorBlocked(LPCVECTOR3 origin);
+typedef struct {
+    DWORD anchor;
+    DWORD const *visible;
+    DWORD visible_count, limit;
+    LPSTR command;
+    DWORD command_size;
+} gameSameTypeSelection_t;
+BOOL CL_GameBuildSameTypeSelection(gameSameTypeSelection_t *selection);
 
 extern struct world_state world;
 

@@ -135,7 +135,7 @@ generic `Button` command path rather than by a registered ability code.
 
 | Code | Reference behavior | OpenWarcraft3 status | Notes |
 |---|---|---|---|
-| `AHhb` | Holy Light | Partial | Target selection, range, mana, cooldown, target masks, undead-only enemy damage, healing, and target art exist. Needs richer dispel/damage typing. |
+| `AHhb` | Holy Light | Partial | Target selection (including [selected-unit multiselect portrait targeting](../selection-and-control.md) without subgroup-focus changes), range, mana, cooldown, target masks, undead-only enemy damage, healing, and target art exist. Needs richer dispel/damage typing and retail-complete invalid-target feedback. |
 | `AHwe` | Summon Water Elemental | Partial | No-target summon, level unit id, mana/cooldown, ownership, and timed life exist. Needs better placement/art/order polish. |
 | `AHbz` | Blizzard | Partial | Point targeting and periodic enemy area damage exist. Needs shard visuals, channel cancellation details, building reduction, and max-damage rules. |
 | `AHtb` | Thunder Bolt | Partial | Target selection, projectile, damage, stun, range, mana, cooldown, and target masks exist. Needs better cast animation timing. |
@@ -204,8 +204,7 @@ generic `Button` command path rather than by a registered ability code.
    target filters, point/unit/no-target command flows, and buff/status storage.
 2. Complete one targeted spell end to end, preferably `AHtb` Thunder Bolt, then
    reuse that path for `ANfb`.
-3. Bring `AHhb` to real behavior, replacing the current visual-only local
-   implementation with target validation and healing.
+3. Finish `AHhb` retail parity around the existing target validation/healing path: preserve selected-unit portrait targeting, add retail-complete invalid-target feedback when its authoritative error mapping is known, and complete richer damage/dispel typing.
 4. Add no-target summon spells (`AHwe`, `AOsf`) once timed-life units are
    available.
 5. Finish Repair target-category coverage and destructible/naval behavior, expand generic autocast beyond Repair's nearest-valid policy, and then generalize the remaining Wisp harvest variant (`Awha`).

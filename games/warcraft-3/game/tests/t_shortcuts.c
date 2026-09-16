@@ -110,6 +110,24 @@ TEST(wc3_shortcuts, controlled_unit_invalidation_marks_player_dirty) {
 }
 
 
+TEST(wc3_shortcuts, hidden_hero_is_not_in_shortcut_roster) {
+    LPGAMECLIENT client = &game.clients[0];
+    LPEDICT hero;
+
+    reset_entities();
+    setup_test_world();
+    client->ps.number = 0;
+    hero = alloc_test_unit(MAKEFOURCC('H','p','a','l'), 64.0f, 64.0f);
+    hero->svflags |= SVF_MONSTER;
+    hero->s.player = 0;
+
+    T_ASSERT(G_UnitShowsHeroShortcut(client, hero));
+    hero->s.renderfx |= RF_HIDDEN;
+    T_ASSERT(!G_UnitShowsHeroShortcut(client, hero));
+    hero->s.renderfx &= ~RF_HIDDEN;
+    T_ASSERT(G_UnitShowsHeroShortcut(client, hero));
+}
+
 TEST(wc3_shortcuts, hero_skill_point_change_invalidates_shortcut_badge) {
     LPGAMECLIENT client = &game.clients[0];
     LPEDICT hero;

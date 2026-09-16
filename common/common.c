@@ -1772,7 +1772,12 @@ static void Com_LoadGame_f(void) {
  * compiled into the game module only when it is built with -DBZ_TESTS; in a
  * production build the registry is empty and this reports zero tests. */
 static void Com_Test_f(void) {
-    int failures = Test_Run(Cmd_Argc() > 1 ? Cmd_Argv(1) : "*");
+    /* Tests execute commands too; Cmd_Argv storage changes while the registry is running. */
+    LPCSTR arg = Cmd_Argc() > 1 ? Cmd_Argv(1) : "*";
+    char *pattern = MemAlloc(strlen(arg) + 1);
+    strcpy(pattern, arg);
+    int failures = Test_Run(pattern);
+    MemFree(pattern);
     exit(failures ? 1 : 0);
 }
 

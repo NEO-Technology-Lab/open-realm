@@ -12,9 +12,7 @@
 
 /* Global import table filled by M_GetAPI */
 menuImport_t mi;
-LPCPLAYER menu_player;
 
-void M_UpdatePlayerState(LPCPLAYER state) { menu_player = state; }
 
 /* Internal state */
 typedef struct {
@@ -120,46 +118,6 @@ static const MENUCOMMAND menu_commands[] = {
  * ConsoleTexture05/06 fields even though both extension tiles are installed.
  * When one symbolic key is absent, derive it from the resolved sibling path so
  * the active race/custom skin remains authoritative. */
-static LPCSTR M_ConsoleExtensionSibling(LPCSTR key) {
-    static PATHSTR path;
-    LPCSTR sibling_key, sibling;
-    char from_digit, to_digit;
-    char *dot, *end;
-
-    if (!key) return NULL;
-    if (!strcmp(key, "ConsoleTexture05")) {
-        sibling_key = "ConsoleTexture06";
-        from_digit = '6';
-        to_digit = '5';
-    } else if (!strcmp(key, "ConsoleTexture06")) {
-        sibling_key = "ConsoleTexture05";
-        from_digit = '5';
-        to_digit = '6';
-    } else {
-        return NULL;
-    }
-
-    sibling = Theme_String(sibling_key, "Default");
-    if (!sibling || !*sibling || !strcmp(sibling, sibling_key)) return NULL;
-    snprintf(path, sizeof(path), "%s", sibling);
-    dot = strrchr(path, '.');
-    end = dot ? dot : path + strlen(path);
-    if (end - path < 2 || end[-2] != '0' || end[-1] != from_digit) return NULL;
-    end[-1] = to_digit;
-    return path;
-}
-
-/* Resolve symbolic server-authored WC3 image names using the local player's skin. */
-LPCSTR M_ResolveImagePath(LPCSTR key) {
-    LPCSTR resolved, fallback;
-
-    if (!key || !*key || strchr(key, '\\') || strchr(key, '/')) return key;
-    resolved = Theme_String(key, "Default");
-    if (resolved && strcmp(resolved, key)) return resolved;
-    fallback = M_ConsoleExtensionSibling(key);
-    return fallback ? fallback : resolved;
-}
-
 /* Resolve resources before changing presentation; failure leaves the old screen intact. */
 static BOOL UI_LoadScreen(uiScreen_t *screen) {
     if (!screen || screen == ui_current_screen || screen == ui_state.transition_screen || !screen->load || screen->load()) return true;
@@ -623,18 +581,6 @@ static void UI_MenuSetupChat_f(void) {
     else fprintf(stderr, "UI: %s expects a chat message\n", mi.Cmd_Argv(0));
 }
 
-/* Stub callbacks for server data updates */
-/* Forward unit UI data to active screen (Phase 8) */
-void M_UpdateUnitUI(DWORD num_units, menuUnitData_t *units) {
-    mi.Printf("UI_UpdateUnitUI: %d units\n", (int)num_units);
-    
-    /* Forward to current screen if it implements unit UI handling */
-    uiScreen_t *screen = UI_GetCurrentScreen();
-    if (screen && screen->update_unit_ui) {
-        screen->update_unit_ui(num_units, units);
-    }
-}
-
 static void M_UpdateLobbySetup(lobbyState_t const *state) {
     /* No current standalone screen means loading/gameplay owns presentation;
      * late lobby packets must not resurrect the game-setup glue screen. */
@@ -657,10 +603,7 @@ menuExport_t M_GetAPI(menuImport_t import) {
     exp.KeyEvent = M_KeyEvent;
     exp.TextInput = M_TextInput;
     exp.MouseEvent = M_MouseEvent;
-    exp.UpdateUnitUI = M_UpdateUnitUI;
-    exp.UpdatePlayerState = M_UpdatePlayerState;
     exp.UpdateLobbySetup = M_UpdateLobbySetup;
-    exp.ResolveImagePath = M_ResolveImagePath;
     
     return exp;
 }

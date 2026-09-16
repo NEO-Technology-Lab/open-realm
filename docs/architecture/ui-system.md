@@ -4,57 +4,49 @@ OpenWarcraft3 uses a client-side UI library with a clear split between **menu/gl
 
 ## Module Boundary
 
-The UI library communicates with the client through two vtables:
+`menuImport_t` provides filesystem, renderer, sound, and glue command services. `menuExport_t` exposes only
+`Init`, `Shutdown`, `Refresh`, `KeyEvent`, `TextInput`, `MouseEvent`, and `UpdateLobbySetup`.
+There is no player/selected-unit state or gameplay resource-resolution API.
 
-**`menuImport_t`** (`client/menu.h`) — services the client provides to the menu library:
-`.FS_ReadFile`, `.MemAlloc`, `.Cmd_ExecuteText`, renderer/sound access, and font/texture indexing. Runtime player state is pushed through the menu export lifecycle instead of pulled from this table.
+The game authors HUD and in-game dialogs through `svc_layout` and `svc_window`. The client binds replicated state,
+renders frames, and handles focus/input. WC3 resolves skin keys through `UI_ThemeImagePath` using `ui_current_client`
+before publishing concrete `CS_IMAGES` paths. WoW's action bar, inventory, and welcome window already use these
+regular protocols; it no longer emits redundant `svc_unit_ui` packets.
 
-**`menuExport_t`** — functions the UI library exposes to the client:
-`.Init`, `.Shutdown`, `.Refresh`, `.KeyEvent`, `.TextInput`, `.MouseEvent`, `.UpdateUnitUI`, `.UpdateLobbySetup`, plus the optional `.GameCommand` hook. Generic gameplay systems such as minimap input and transient markers stay in `client/`, not in the menu UI module.
+## Exclusive Presentation
 
-The client creates both at startup in `CL_Init`:
+`CL_MenuActive()` permits glue presentation only outside an active or loading world. It gates screen drawing,
+keyboard/text/mouse input, lobby updates, and engine-wrapped menu commands. `key_dest` selects focus within the
+permitted presentation mode; setting it to `key_menu` cannot activate glue over a world.
 
-```c
-re = CL_GetRendererAPI(...);
-ui = M_GetAPI((menuImport_t) {
-    .FS_ReadFile = CL_UI_ReadFile,
-    .Cmd_ExecuteText = Cbuf_AddText,
-});
-menu.Init();  // loads FDF files, initializes screens
-```
+`CL_BeginLoadingMap()` transfers input to gameplay and marks the loading state. `SCR_DrawScreenField()` draws the
+loading layout while loading, world plus game-authored layouts while active, and glue while disconnected or in a
+pre-game lobby. Main-menu mouse events are consumed before gameplay layout handlers. Disconnect restores the
+normal menu command path. In-game pause/options dialogs remain game-authored windows.
 
-## Screen Dispatch: Menus vs HUD
+The library stays loaded, but `CL_BeginLoadingMap` calls its Shutdown lifecycle once to release glue resources.
+Disconnect/return-to-menu calls Init again; repeated map loads do not double-shutdown. An explicit unloaded/ready/
+suspended state also keeps dedicated clients out of this lifecycle. The engine command table retains callback
+pointers to the loaded library. Actual DLL unloading would additionally require command unregistration and reload
+support; it is unnecessary for exclusive execution.
 
-`SCR_DrawScreenField()` in `client/cl_scrn.c` is the central dispatch point. It routes to different rendering paths based on `cls.state`:
+## History and Regression
 
-```c
-void SCR_DrawScreenField(DWORD msec) {
-    re.BeginFrame();
-    switch (cls.state) {
-    case ca_disconnected:     menu.Refresh(cl.time); break;   // menu/glue UI
-    case ca_connecting:      menu.Refresh(cl.time); break;   // menu/glue UI
-    case ca_connected:       menu.Refresh(cl.time); break;   // menu/glue UI
-    case ca_active:
-        V_RenderView();          // 3D world
-        SCR_DrawLayout();        // server-authored in-game HUD
-        if (cls.key_dest == key_menu)
-            menu.Refresh(cl.time); // ESC menu overlay
-        break;
-    }
-    CON_DrawConsole();
-    re.EndFrame();
-}
-```
+`240e1a02` (2026-05-20, “Migrate to client-side UI architecture (Phase 8)”) introduced `UpdateUnitUI` in `ui/ui.h`.
+It survived the move/rename to `client/menu.h`. `70d45169` (2026-09-04, “remove game state imports from menu ABI”)
+introduced `UpdatePlayerState`, replacing pull access with pushed gameplay state rather than removing the dependency.
+`78e61d5b3` introduced menu-based HUD image resolution. These predate the PR 420 null-check change.
 
-**Key rule**: `menu.Refresh()` draws menu/glue screens. When in `ca_active` (gameplay), `SCR_DrawLayout()` draws the in-game HUD via a completely separate path. The UI library's screens only appear when the console key (`key_menu`) is toggled (ESC menu overlay).
+The old authoring documentation endorsed ConsoleUI inside the menu, contradicting AGENTS.md. The boundary rule
+also had an exception clause. Both are corrected: gameplay UI has no menu-library exception.
 
-Inside `menu.Refresh()` → `UI_RefreshLocal()`, presentation ownership has two independent signals:
+The screen regression sets `ca_active` together with `key_menu`: previously it called menu.Refresh; now it draws
+only the game path. The inverse verifies disconnected glue drawing. `CL_ParseUnitUI` consumes the legacy wire
+shape with a diagnostic to preserve packet alignment, never populating a menu. Legacy named `svc_ui_window`
+messages are diagnosed; current windows use `svc_window`.
 
-1. **Loading** (`playerState_t.client_ui_state == CLIENT_UI_LOADING`): Draws the loading screen first. This remains authoritative even if `menu_ingame` has already been queued through the command buffer.
-2. **Standalone menu/glue screen** (`UI_GetCurrentScreen() != NULL`): Calls the current `uiScreen_t->draw()` — main menu, single player, options, LAN lobby, etc.
-3. **No standalone screen** (`UI_GetCurrentScreen() == NULL`): The UI module draws no glue screen. During gameplay the in-game HUD is handled by `SCR_DrawLayout()`.
-
-`ui_current_screen` is the WC3 UI module's ownership token; do not add a parallel `game_mode` boolean. `UI_SetScreen(NULL)` is the handoff from standalone glue/menu presentation to loading/gameplay presentation.
+Run `make test`, `python3 tools/menu_boundary_audit.py`, and `python3 tools/engine_boundary_audit.py`.
+UDP tests require local socket access. No interactive game launch is required for these dispatch contracts.
 
 ## Screen Controllers
 
@@ -69,7 +61,6 @@ typedef struct uiScreen_s {
     void (*refresh)(int msec);                               // per-frame update
     void (*draw)(void);                                      // render frames
     void (*key_event)(int key, BOOL down);                   // keyboard input
-    void (*update_unit_ui)(DWORD num_units, menuUnitData_t *); // HUD data (game mode only)
 } uiScreen_t;
 ```
 
@@ -343,7 +334,7 @@ the full scene because its frames are projected from world coordinates.
 | `games/warcraft-3/menu/menu_screen.h` | `uiScreen_t` struct and screen declarations |
 | `games/warcraft-3/common/stb_fdf.h` | FDF parser, `FRAMEDEF` struct, `frames[]` registry |
 | `games/warcraft-3/menu/menu_render.c` | Layout solver, frame drawing dispatch |
-| `games/warcraft-3/menu/screens/` | Per-screen controllers (`main_menu.c`, `console_ui.c`, etc.) |
+| `games/warcraft-3/menu/screens/` | Per-screen controllers (`main_menu.c`, `single_player.c`, etc.) |
 
 ## See Also
 
@@ -351,4 +342,12 @@ the full scene because its frames are projected from world coordinates.
 - [Client Architecture](client.md) — client main loop and scene rendering
 - [Runtime Modules and Cvars](runtime.md) — cvar system and config loading
 - [Warcraft III UI System](../games/warcraft-3/architecture/ui.md) — WC3-specific UI detail
-- `docs/ui-authoring.md` — FDF conventions and ConsoleUI controller (source tree only)
+- `docs/ui-authoring.md` — FDF conventions and game-authored HUD (source tree only)
+
+The SDL regression queues mouse, keyboard, and text events through `CL_Input`. Native SDL2 supports the complete
+sequence. The local sdl2-compat installation lost synthetic text during SDL3 conversion, crashing inside
+Event3to2/SDL_PushEvent; it was replaced with native SDL2 rather than retaining a test workaround.
+
+The in-engine test command now copies its glob before `Test_Run`: tests execute console commands, which overwrite
+`Cmd_Argv` storage. Passing that storage directly previously changed the filter mid-run and silently skipped later
+client lifecycle/command tests. JUnit reports must include the `client_session` cases as well as game/input tests.

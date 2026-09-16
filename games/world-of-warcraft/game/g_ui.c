@@ -759,13 +759,6 @@ static void UI_WriteBackpackWindow(LPEDICT ent) {
     }
 }
 
-/* Send the legacy menu.dll-owned named XML window toggle. */
-static void UI_WriteWindowMsg(LPCSTR window_id, int show) {
-    gi.Write(PF_BYTE, &(LONG){svc_ui_window});
-    gi.Write(PF_STRING, window_id);
-    gi.Write(PF_BYTE, &(LONG){show});
-}
-
 /* Show the classic welcome tutorial as a server-owned transient window. */
 void UI_WriteWelcomeWindow(LPEDICT ent) {
     uiFrame_t frame = {0};
@@ -783,13 +776,6 @@ void UI_WriteWelcomeWindow(LPEDICT ent) {
                      COLOR32_WHITE);
     UI_WriteSimpleButton(PX(472), PY(512), PW(80), PH(28), "Okay", UI_WINDOW_CLOSE_ACTION);
     UI_WriteWindowEnd(ent);
-}
-
-/* Hide a named window by ID. */
-void UI_HideWindow(LPEDICT ent, LPCSTR window_id) {
-    if (!window_id || !window_id[0]) return;
-    UI_WriteWindowMsg(window_id, 0);
-    gi.unicast(ent);
 }
 
 /* Build and unicast the WoW HUD layer for a player */

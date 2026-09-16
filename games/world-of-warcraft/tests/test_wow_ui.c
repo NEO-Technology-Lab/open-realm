@@ -305,7 +305,6 @@ static menuExport_t init_ui(void) {
     menuExport_t menu;
 
     menu = M_GetAPI((menuImport_t) { .FS_ReadFile = test_fs_read_file, .FS_FreeFile = test_fs_free_file, .MemAlloc = test_mem_alloc, .MemFree = test_mem_free, .Cmd_ExecuteText = test_cmd_execute_text, .ImageIndex = test_image_index, .ServerCommand = test_server_command, .Cvar_String = test_cvar_string, .Cvar_Set = test_cvar_set, .GetRenderer = test_get_renderer, .Printf = test_printf, });
-    menu.UpdatePlayerState(&test_ps);
 
     T_NOT_NULL(menu.Init);
     T_NOT_NULL(menu.Refresh);
@@ -318,19 +317,11 @@ extern BOOL UIWow_RunLuaString(LPCSTR name, LPCSTR script);
 
 TEST(wow_ui, wow_lua_ui_draws_from_generated_mpq) {
     menuExport_t menu;
-    menuUnitData_t unit;
 
     reset_test_state();
     T_ASSERT(SFileOpenArchive(TEST_WOW_MPQ, 0, 0, &test_archive));
 
     menu = init_ui();
-    memset(&unit, 0, sizeof(unit));
-    unit.num_inventory = 1;
-    snprintf(unit.inventory[0].art, sizeof(unit.inventory[0].art), "%s", "Interface\\Test\\Inventory.blp");
-    snprintf(unit.inventory[0].tooltip, sizeof(unit.inventory[0].tooltip), "%s", "Inventory");
-    snprintf(unit.inventory[0].ubertip, sizeof(unit.inventory[0].ubertip), "%s", "1");
-    unit.inventory[0].slot = 0;
-    menu.UpdateUnitUI(1, &unit);
     menu.Refresh(33);
 
     T_EQ((int)forbidden_texture_loads, 0);
@@ -339,13 +330,13 @@ TEST(wow_ui, wow_lua_ui_draws_from_generated_mpq) {
     T_EQ((int)draw_inventory_count, 1);
     T_EQ((int)draw_fill_count, 1);
     T_EQ((int)draw_text_count, 1);
-    T_EQ((int)draw_minimap_count, 1);
+    T_EQ((int)draw_minimap_count, 0);
     T_EQ((int)last_panel_width, 16);
     T_EQ((int)last_panel_height, 8);
     T_EQ((int)last_inventory_width, 8);
     T_EQ((int)last_inventory_height, 8);
-    T_STREQ(last_draw_text, "LuaTester:77:33");
-    T_STREQ(last_server_command, "wow_lua_test 9 33");
+    T_STREQ(last_draw_text, "Login:33");
+    T_STREQ(last_server_command, "");
 
     menu.Shutdown();
     FOR_LOOP(i, MAX_IMAGES) {
@@ -370,100 +361,3 @@ TEST(wow_ui, enter_world_delegates_map_selection_to_server_playercreateinfo) {
     SFileCloseArchive(test_archive);
     test_archive = NULL;
 }
-
-#if 0 /* tutorial presentation is server-authored through svc_window */
-TEST(wow_ui, tutorial_42_uses_global_strings_and_display_tips_cvar) {
-    menuExport_t menu;
-    RECT check, alert1, alert2, frame; int check_idx, frame_idx;
-
-    reset_test_state();
-    T_ASSERT(SFileOpenArchive(TEST_WOW_MPQ, 0, 0, &test_archive));
-    menu = init_ui(); UIWow_EnterGameMode();
-    menu.ShowTutorial(1);
-    menu.ShowTutorial(2);
-    menu.ShowTutorial(1);
-    menu.ShowWindow("TutorialFrame", 1);
-    T_ASSERT(wow_ui.tutorial_open);
-    T_EQ((int)wow_ui.tutorial_alert_count, 2);
-    T_STREQ(wow_ui.tutorial_title, "Welcome to World of Warcraft!");
-    T_ASSERT(strstr(wow_ui.tutorial_body, "help button"));
-    T_STREQ(wow_ui.tutorial_check, "Display Tips");
-    T_STREQ(wow_ui.tutorial_okay, "Okay");
-    frame_idx = UIWow_XmlFindByNamePub("TutorialFrame"); T_ASSERT(frame_idx >= 0);
-    UIWow_XmlComputeRectPub(frame_idx, &frame.x, &frame.y, &frame.w, &frame.h);
-    T_FEQ(frame.h, 0.012f + 62.0f / 768.0f, 0.001f);
-    /* The expanded welcome popup itself stays centered regardless of localized body height. */
-    T_FEQ(frame.y + frame.h * 0.5f, 0.5f, 0.001f);
-    check_idx = UIWow_XmlFindByNamePub("TutorialFrameCheckButton");
-    T_ASSERT(check_idx >= 0);
-    UIWow_XmlComputeRectPub(check_idx, &check.x, &check.y, &check.w, &check.h);
-    T_FEQ(check.w, 24.0f / 1024.0f, 0.001f); T_FEQ(check.h, 24.0f / 768.0f, 0.001f);
-    wow_ui.tutorial_open = false;
-    alert1 = MAKE(RECT, 0.5f-17.0f/1024.0f, 671.0f/768.0f, 34.0f/1024.0f, 42.0f/768.0f);
-    alert2 = alert1; alert2.x += 36.0f/1024.0f;
-    T_FEQ(alert2.x - alert1.x, 36.0f / 1024.0f, 0.001f); T_FEQ(alert2.y, alert1.y, 0.001f);
-    T_ASSERT(menu.MouseEvent(MENU_MOUSE_DOWN, (int)((alert1.x + alert1.w * 0.5f) * 1024.0f), (int)((alert1.y + alert1.h * 0.5f) * 768.0f), 1));
-    T_ASSERT(wow_ui.tutorial_open);
-    T_EQ((int)wow_ui.tutorial_id, 1);
-    T_EQ((int)wow_ui.tutorial_alert_count, 1);
-    UIWow_XmlComputeRectPub(frame_idx, &frame.x, &frame.y, &frame.w, &frame.h);
-    /* Ordinary help restores the native XML anchor 100px above the screen bottom. */
-    T_FEQ(frame.y + frame.h, 1.0f - 100.0f / 768.0f, 0.001f);
-    T_STREQ(wow_ui.tutorial_title, "Questgivers");
-    UIWow_XmlComputeRectPub(check_idx, &check.x, &check.y, &check.w, &check.h);
-    T_ASSERT(UIWow_WindowMouseDown(check.x + check.w * 0.5f, check.y + check.h * 0.5f));
-    T_STREQ(test_show_tips, "0");
-    T_EQ((int)wow_ui.tutorial_alert_count, 0);
-    menu.ShowWindow("TutorialFrame", 0); menu.ShowWindow("TutorialFrame", 1);
-    T_ASSERT(!wow_ui.tutorial_open);
-    menu.ShowTutorial(2);
-    T_EQ((int)wow_ui.tutorial_alert_count, 0);
-    menu.Shutdown(); SFileCloseArchive(test_archive); test_archive = NULL;
-}
-
-TEST(wow_ui, tutorial_okay_closes_on_mouse_up_not_down) {
-    menuExport_t menu;
-    RECT okay; int cx, cy;
-
-    reset_test_state();
-    T_ASSERT(SFileOpenArchive(TEST_WOW_MPQ, 0, 0, &test_archive));
-    menu = init_ui(); UIWow_EnterGameMode();
-    menu.ShowWindow("TutorialFrame", 1);
-    T_ASSERT(wow_ui.tutorial_open);
-    UIWow_TutorialOkayRect(&okay);
-    cx = (int)((okay.x + okay.w * 0.5f) * 1024.0f);
-    cy = (int)((okay.y + okay.h * 0.5f) * 768.0f);
-
-    /* Mouse down over the Okay button only arms the pushed visual; it must not close. */
-    T_ASSERT(menu.MouseEvent(MENU_MOUSE_DOWN, cx, cy, 1));
-    T_ASSERT(wow_ui.tutorial_okay_pressed);
-    T_ASSERT(wow_ui.tutorial_open);
-
-    /* Releasing over the button closes the panel and clears the pressed state. */
-    T_ASSERT(menu.MouseEvent(MENU_MOUSE_UP, cx, cy, 1));
-    T_ASSERT(!wow_ui.tutorial_okay_pressed);
-    T_ASSERT(!wow_ui.tutorial_open);
-
-    /* Pressing and releasing off the button cancels without closing. */
-    menu.ShowWindow("TutorialFrame", 1);
-    T_ASSERT(menu.MouseEvent(MENU_MOUSE_DOWN, cx, cy, 1));
-    T_ASSERT(wow_ui.tutorial_okay_pressed);
-    T_ASSERT(menu.MouseEvent(MENU_MOUSE_UP, 100, 100, 1));
-    T_ASSERT(!wow_ui.tutorial_okay_pressed);
-    T_ASSERT(wow_ui.tutorial_open);
-
-    menu.Shutdown(); SFileCloseArchive(test_archive); test_archive = NULL;
-}
-
-TEST(wow_ui, frame_setpoint_lua_moves_runtime_anchor) {
-    menuExport_t menu; int idx; FLOAT x, y, w, h;
-
-    reset_test_state();
-    T_ASSERT(SFileOpenArchive(TEST_WOW_MPQ, 0, 0, &test_archive));
-    menu = init_ui(); UIWow_EnterGameMode(); menu.ShowWindow("TutorialFrame", 1);
-    T_ASSERT(UIWow_RunLuaString("test SetPoint", "TutorialFrame:SetPoint('BOTTOM', 'UIParent', 'CENTER', 0, -80)"));
-    idx = UIWow_XmlFindByNamePub("TutorialFrame"); UIWow_XmlComputeRectPub(idx, &x, &y, &w, &h);
-    T_FEQ(y + h, 0.5f + 80.0f / 768.0f, 0.001f);
-    menu.Shutdown(); SFileCloseArchive(test_archive); test_archive = NULL;
-}
-#endif

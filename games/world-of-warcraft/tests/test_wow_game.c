@@ -510,42 +510,18 @@ static void reset_test_state(void) {
 }
 
 static void assert_player_ui_payload(void) {
-    DWORD cursor = 0;
-    int num_buttons;
-    int num_inventory;
-
-    T_ASSERT(test_last_unicast_size > 0);
-    T_EQ(test_last_unicast_buf[cursor++], svc_unit_ui);
-    T_EQ(test_last_unicast_buf[cursor++], 1);
-    T_EQ((SHORT)(test_last_unicast_buf[cursor] | (test_last_unicast_buf[cursor + 1] << 8)), 0);
-    cursor += 2;
-    num_buttons = test_last_unicast_buf[cursor++];
-    T_EQ(num_buttons, WOW_UI_ACTION_SLOTS);
-    T_STREQ((LPCSTR)test_last_unicast_buf + cursor, "Interface\\Icons\\Ability_Warrior_Cleave.blp");
-    cursor += (DWORD)strlen((LPCSTR)test_last_unicast_buf + cursor) + 1;
-    T_STREQ((LPCSTR)test_last_unicast_buf + cursor, "Heroic Strike");
-    cursor += (DWORD)strlen((LPCSTR)test_last_unicast_buf + cursor) + 1;
-    T_STREQ((LPCSTR)test_last_unicast_buf + cursor, "1");
-    cursor += (DWORD)strlen((LPCSTR)test_last_unicast_buf + cursor) + 1;
-    T_STREQ((LPCSTR)test_last_unicast_buf + cursor, "wow_action 0");
-    cursor += (DWORD)strlen((LPCSTR)test_last_unicast_buf + cursor) + 1;
-    T_EQ(test_last_unicast_buf[cursor++], '1');
-    for (int i = 1; i < num_buttons; i++) {
-        FOR_LOOP(j, 4) {
-            cursor += (DWORD)strlen((LPCSTR)test_last_unicast_buf + cursor) + 1;
-        }
-        if (i == 9) T_EQ(test_last_unicast_buf[cursor], '0');
-        cursor++;
+    BOOL action = false, inventory = false;
+    DWORD attack = test_image_index("Interface\\Icons\\Ability_Warrior_Cleave.blp");
+    DWORD bag = test_image_index("Interface\\Icons\\INV_Misc_Bag_08.blp");
+    T_EQ(test_last_unicast_size, 0); /* No obsolete svc_unit_ui emission. */
+    T_ASSERT(test_layout_seen[LAYER_CONSOLE]);
+    FOR_LOOP(i, test_ui_frame_count) {
+        testUiFrame_t const *frame = &test_ui_frames[i];
+        if (frame->layer != LAYER_CONSOLE || frame->type != FT_TEXTURE) continue;
+        action |= frame->image_index == attack;
+        inventory |= frame->image_index == bag;
     }
-    num_inventory = test_last_unicast_buf[cursor++];
-    T_EQ(num_inventory, WOW_UI_INVENTORY_SLOTS);
-    T_STREQ((LPCSTR)test_last_unicast_buf + cursor, "Interface\\Icons\\INV_Misc_Bag_08.blp");
-    cursor += (DWORD)strlen((LPCSTR)test_last_unicast_buf + cursor) + 1;
-    T_STREQ((LPCSTR)test_last_unicast_buf + cursor, "Worn Knapsack");
-    cursor += (DWORD)strlen((LPCSTR)test_last_unicast_buf + cursor) + 1;
-    T_STREQ((LPCSTR)test_last_unicast_buf + cursor, "1");
-    cursor += (DWORD)strlen((LPCSTR)test_last_unicast_buf + cursor) + 1;
-    T_EQ(test_last_unicast_buf[cursor++], 0);
+    T_ASSERT(action); T_ASSERT(inventory);
 }
 
 static struct game_export *init_game(void) {

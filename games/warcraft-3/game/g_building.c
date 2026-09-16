@@ -1340,8 +1340,22 @@ void G_RunConstructionFrame(LPEDICT building) {
     FLOAT duration, hp_gain;
     edictStat_s *hp;
 
-    if (!building || !building->construction.active || building->construction.paused ||
-        building->paused || !building->data.UnitBalance) return;
+    if (!building || !building->construction.active || building->paused ||
+        !building->data.UnitBalance) return;
+
+    duration = MAX(1.0f, (FLOAT)building->data.UnitBalance->buildTime * 1000.0f);
+    hp = &building->health;
+    /* Check the cheat before the Human paused-strategy gate: construction
+     * state, not a worker behavior, owns instant completion. */
+    if (G_PlayerInstantBuild(building->s.player)) {
+        building->construction.progress = duration;
+        G_SetHealth(building, hp->max_value);
+        G_UpdateConstructionAnimation(building);
+        G_CompleteConstruction(building);
+        return;
+    }
+
+    if (building->construction.paused) return;
     if (building->construction.type != CONSTRUCTION_ORC &&
         building->construction.type != CONSTRUCTION_UNDEAD &&
         building->construction.type != CONSTRUCTION_NIGHTELF) return;
@@ -1352,8 +1366,6 @@ void G_RunConstructionFrame(LPEDICT building) {
         G_ReleaseConstructionWorker(building, false);
     }
 
-    duration = MAX(1.0f, (FLOAT)building->data.UnitBalance->buildTime * 1000.0f);
-    hp = &building->health;
     building->construction.progress += (FLOAT)FRAMETIME;
     hp_gain = (hp->max_value - MAX(1.0f, hp->max_value * WC3_BUILD_START_LIFE)) *
               ((FLOAT)FRAMETIME / duration);
@@ -1480,7 +1492,7 @@ void G_CompleteConstruction(LPEDICT building) {
     building->aiflags &= ~AI_HOLD_FRAME;
     if (building->build == building) building->build = NULL;
     G_SetHealth(building, building->health.max_value);
-    building->stand(building);
+	if (building->stand) building->stand(building);
 #ifdef WC3_DEBUG_AI
     fprintf(stderr, "WC3_DEBUG_AI construction complete building=%ld id=%.4s player=%u\n",
         (long)(building - g_edicts), (LPCSTR)&building->class_id, building->s.player);

@@ -80,8 +80,7 @@ Keeping append separate from recall is important for the Warcraft III workflow: 
 When `group N` runs:
 1. If `cl.groups[g].num_selected > 0`, `CL_ApplySelection` is called with the stored IDs.
 2. `CL_ApplySelection` writes a `select` command to the netchan and updates the local selection cache.
-3. `CL_RequestUnitUI` refreshes the UI with the new local selection hint.
-4. The server's Warcraft III `CMD_Select` path remains authoritative and filters/reconciles the actual selected unit set.
+3. The server's Warcraft III `CMD_Select` path filters/reconciles the selected set and updates the game-authored HUD through `svc_layout`.
 
 ### Camera Focus
 

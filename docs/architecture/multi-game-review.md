@@ -1,5 +1,10 @@
 # Architecture and multi-game client review
 
+> Historical migration notes below may describe removed HUD callbacks. The current contract is
+> [exclusive main-menu and game-authored HUD ownership](ui-system.md).
+> `UpdateUnitUI`, `UpdatePlayerState`, and menu image resolution have been removed; do not restore them.
+
+
 Source review: 2026-09-09, before the input refactor. The baseline findings below are historical.
 See [shared client input profiles](shared-input.md) for the implemented portion and current contracts.
 

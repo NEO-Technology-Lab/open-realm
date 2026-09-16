@@ -1299,6 +1299,72 @@ TEST(wc3_spell, holy_light_flag_dispatch_validates_and_heals) {
 }
 
 
+/* The retained multiselect panel sends `focus <entity>` for portrait clicks.
+ * While a unit-target spell is armed, Focus must feed that selected unit into
+ * the target callback instead of changing subgroup focus. */
+TEST(wc3_spell, holy_light_multiselect_portrait_targets_without_changing_focus) {
+    const char slk[] =
+        "ID;PWXL;N;EBB;Y2;X7\n"
+        "C;Y1;X1;K\"alias\"\nC;Y1;X2;K\"code\"\nC;Y1;X3;K\"targs\"\n"
+        "C;Y1;X4;K\"Cost1\"\nC;Y1;X5;K\"Cool1\"\nC;Y1;X6;K\"Rng1\"\nC;Y1;X7;K\"DataA1\"\n"
+        "C;Y2;X1;K\"AHhb\"\nC;Y2;X2;K\"AHhb\"\nC;Y2;X3;K\"air,ground,friend,self\"\n"
+        "C;Y2;X4;K\"65\"\nC;Y2;X5;K\"5\"\nC;Y2;X6;K\"600\"\nC;Y2;X7;K\"200\"\nE\n";
+    UnitAbilities_t abilities = { .abilList = "AHhb" };
+    slkTestData_t *rows = parse_slk_string(slk), *old;
+    LPEDICT caster = make_hero(MAKEFOURCC('H','p','a','l'), 500, 200, 0, 0);
+    LPEDICT target = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 50, 0);
+    LPEDICT clent = &g_edicts[0];
+    LPGAMECLIENT client = &game.clients[0];
+    char caster_number[16], target_number[16];
+    LPCSTR button[] = { "button", "AHhb" };
+    LPCSTR focus_caster[] = { "focus", caster_number };
+    LPCSTR focus_target[] = { "focus", target_number };
+
+    old = G_SetSLKRows("AbilityData", rows);
+    clent->client = client;
+    G_ResetSelectionFocus(client);
+    caster->data.UnitAbilities = &abilities;
+    caster->s.player = target->s.player = client->ps.number;
+    target->svflags |= SVF_MONSTER;
+    target->targtype = TARG_GROUND;
+    target->health.value = 100;
+    target->health.max_value = 500;
+    G_SelectEntity(client, caster);
+    G_SelectEntity(client, target);
+    T_ASSERT(G_FocusSelectedUnit(client, caster));
+    T_ASSERT(G_GetMainSelectedUnit(client) == caster);
+    snprintf(caster_number, sizeof(caster_number), "%u", (unsigned)caster->s.number);
+    snprintf(target_number, sizeof(target_number), "%u", (unsigned)target->s.number);
+
+    G_ClientCommand(clent, 2, button);
+    T_NOT_NULL(client->menu.on_entity_selected);
+
+    /* Clicking Arthas's own portrait is an invalid Holy Light target. The
+     * spell stays armed and the focused subgroup must remain Arthas. */
+    G_ClientCommand(clent, 2, focus_caster);
+    T_NOT_NULL(client->menu.on_entity_selected);
+    T_ASSERT(G_GetMainSelectedUnit(client) == caster);
+    T_FEQ(caster->mana.value, 200, 0.001f);
+    T_ASSERT(S_SpellCooldownReady(caster, MAKEFOURCC('A','H','h','b')));
+    T_FEQ(target->health.value, 100, 0.001f);
+
+    /* Clicking the selected Footman's portrait targets him rather than
+     * focusing his subgroup. Successful casting exits target mode. */
+    G_ClientCommand(clent, 2, focus_target);
+    T_FEQ(target->health.value, 300, 0.001f);
+    T_FEQ(caster->mana.value, 135, 0.001f);
+    T_ASSERT(!S_SpellCooldownReady(caster, MAKEFOURCC('A','H','h','b')));
+    T_NULL(client->menu.on_entity_selected);
+    T_ASSERT(G_GetMainSelectedUnit(client) == caster);
+    T_ASSERT(G_IsEntitySelected(client, caster));
+    T_ASSERT(G_IsEntitySelected(client, target));
+
+    G_ResetSelectionFocus(client);
+    G_SetSLKRows("AbilityData", old);
+    free_slk_rows(rows);
+}
+
+
 TEST(wc3_spell, unit_target_click_accepts_out_of_range_target_and_casts_after_approach) {
     const char slk[] =
         "ID;PWXL;N;EBB;Y2;X9\n"

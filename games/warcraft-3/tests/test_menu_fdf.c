@@ -396,7 +396,7 @@ static void reset_ui_state(void) {
     captured_glue_changes = 0;
     fake_texture_id = 0;
     texture_releases = map_reads = 0;
-    menu_player = NULL; test_map = "";
+    test_map = "";
     test_vid_native = -1;
     hover_texture = NULL;
     captured_hover_draws = 0;
@@ -3304,43 +3304,19 @@ TEST(menu_fdf, unversioned_theme_key_precedes_edition_variant) {
     mi = saved;
 }
 
-TEST(menu_fdf, deferred_texture_cache_tracks_theme_changes) {
+TEST(menu_fdf, deferred_texture_cache_uses_menu_theme) {
     menuImport_t saved = mi;
-    PLAYER player = { .race = kPlayerRaceHuman };
     reset_ui_state();
     mi.FS_ReadFile = test_theme_read; mi.FS_FreeFile = test_fs_free_file;
     UI_LoadTheme("UI\\war3skins.txt");
     DWORD index = UI_LoadTexture("Background", true);
     T_EQ(UI_LoadTexture("Background", true), index);
     T_EQ(fake_texture_id, 0);
-    menu_player = &player;
-    T_NOT_NULL(UI_GetTexture(index));
-    T_STREQ(captured_image_path, "Human.blp");
-    T_EQ(texture_releases, 0); T_EQ(fake_texture_id, 1);
-    T_NOT_NULL(UI_GetTexture(index)); T_EQ(fake_texture_id, 1);
-    menu_player = NULL;
     T_NOT_NULL(UI_GetTexture(index));
     T_STREQ(captured_image_path, "Default.blp");
-    T_EQ(texture_releases, 1); T_EQ(fake_texture_id, 2);
-    T_NOT_NULL(UI_GetTexture(index)); T_EQ(fake_texture_id, 2);
-    UI_ClearTheme(); mi = saved;
-}
-
-
-TEST(menu_fdf, exported_image_resolver_uses_local_player_skin) {
-    menuImport_t saved = mi;
-    PLAYER player = { .race = kPlayerRaceHuman };
-
-    reset_ui_state();
-    mi.FS_ReadFile = test_theme_read; mi.FS_FreeFile = test_fs_free_file;
-
-    menu_player = &player;
-    UI_LoadTheme("UI\\war3skins.txt");
-    T_STREQ(M_ResolveImagePath("Background"), "Human.blp");
-    T_STREQ(M_ResolveImagePath("ConsoleTexture05"), "Custom05.blp");
-    T_STREQ(M_ResolveImagePath("ConsoleTexture06"), "Custom06.blp");
-    T_STREQ(M_ResolveImagePath("UI\\Textures\\fixed.blp"), "UI\\Textures\\fixed.blp");
-    menu_player = NULL;
+    T_EQ(texture_releases, 0); T_EQ(fake_texture_id, 1);
+    T_NOT_NULL(UI_GetTexture(index)); T_EQ(fake_texture_id, 1);
+    T_STREQ(Theme_String("Background", "Human"), "Human.blp");
     UI_ClearTheme(); mi = saved;
 }
 

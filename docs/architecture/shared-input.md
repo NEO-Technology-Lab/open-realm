@@ -63,6 +63,7 @@ Defaults live in `games/<game>/share/config.cfg`, installed with `make install-s
 |---|---|---|---|
 | `cl_start_menu` | `menu_main` | `menu_main` | `menu_login` |
 | `cl_selection_limit` | 64 | 64 | 1 |
+| `cl_same_type_select` | 1 | 0 | 0 |
 | `cl_group_focus` | 1 | 1 | 0 |
 | `cl_camera_scroll_speed` | 1400 world units/s | 350 world units/s | 0 |
 | `cl_camera_edge_scroll` | 1 | 0 | 0 |
@@ -75,6 +76,8 @@ Defaults live in `games/<game>/share/config.cfg`, installed with `make install-s
 
 All builds register `+select`, `+attack`, `+smart`, `+pan`, `+look`, `+forward`, `+back`, `+moveleft`, `+moveright`,
 `+camwest`, `+cameast`, `+camnorth`, `+camsouth`, `zoom`, and `group`. Edge/arrow panning follows camera yaw.
+Transient gameplay-window focus and modal ownership are documented in [client windows](client-windows.md); non-modal edit
+controls must yield directional camera arrows to this binding path, while modal dialogs own input completely.
 Mouse sensitivity defaults to `cl_mouse_speed 0.18` degrees/pixel, click threshold to 10 pixels, and edge margin to
 6 pixels. Existing `zoom_speed`, `camera_min_distance`, and `camera_max_distance` still apply. Server-authored
 snapshot defaults determine initial angles/distance. To enable orbit drag in WC3, for example, bind an unused key
@@ -107,6 +110,16 @@ users can opt into `bind CTRL+1 "group assign 1"` and `bind ALT+1 "group 1"` wit
 Clicks and group recalls share `cl.selection`. `Wow_SelectEntity` emits the existing `svc_set_selection`, so target
 cycling, interaction, and rejected selections reconcile that cache. Game rules remain authoritative. Group membership
 resets at map boundaries and is not pruned merely because a snapshot cannot currently see a member.
+
+`cl_same_type_select` is a shared input policy switch enabled by WC3. Ctrl+click
+or an unshifted second click on the same entity within 500 ms sends the clicked
+entity plus renderer-visible viewport candidates through `select ... sametype`.
+The client may pre-filter those candidates by snapshot `class_id` so unrelated
+visible entities do not consume the bounded selection packet, but the game
+module rechecks the anchor type, legal membership, and capacity authoritatively.
+The candidate suffix is capped at 61 entries because the shared command tokenizer
+accepts 64 tokens and `select <anchor> sametype` consumes three of them.
+Shift-modified clicks stay on the existing selection/target-command path.
 
 ## Minimap and context-click routing
 

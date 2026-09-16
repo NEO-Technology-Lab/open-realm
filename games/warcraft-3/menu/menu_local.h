@@ -22,7 +22,6 @@ typedef struct uiScreen_s uiScreen_t;  /* Defined in menu_screen.h */
 
 /* Global import callbacks (filled by M_GetAPI) */
 extern menuImport_t mi;
-extern LPCPLAYER menu_player;
 
 /* Internal function prototypes */
 
@@ -79,7 +78,6 @@ void UI_SetTexture2(LPFRAMEDEF, LPCSTR, BOOL);
 void UI_InheritFrom(LPFRAMEDEF, LPCSTR);
 void UI_LoadTheme(LPCSTR fileName);
 void UI_ClearTheme(void);
-LPCSTR M_ResolveImagePath(LPCSTR key);
 void UI_QueueCommand(LPCSTR command);
 LPCFRAMEDEF UI_HitTest(FLOAT fdf_x, FLOAT fdf_y);
 RECT UI_GetSceneRect(void);
