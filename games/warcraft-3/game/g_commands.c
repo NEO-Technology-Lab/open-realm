@@ -237,6 +237,37 @@ BOOL G_FocusSelectedUnit(LPGAMECLIENT client, LPEDICT ent) {
     return true;
 }
 
+BOOL G_CycleSelectionSubgroup(LPGAMECLIENT client) {
+    LPEDICT ordered[WC3_SELECTION_LIMIT];
+    LPEDICT main;
+    DWORD count;
+    DWORD main_index = 0;
+    DWORD next_index;
+
+    if (!client) return false;
+    count = G_GetOrderedSelectedUnits(client, ordered, WC3_SELECTION_LIMIT);
+    if (count < 2) return false;
+
+    main = G_GetMainSelectedUnit(client);
+    if (!main) return false;
+    while (main_index < count && ordered[main_index] != main) main_index++;
+    if (main_index >= count) main_index = 0;
+
+    /* Equal unit types are contiguous in the Warsmash-compatible selection
+     * order. Tab advances to the first unit of the next type subgroup and
+     * wraps from the final subgroup back to the first. */
+    next_index = main_index + 1;
+    while (next_index < count &&
+           ordered[next_index]->class_id == ordered[main_index]->class_id) {
+        next_index++;
+    }
+    if (next_index >= count) next_index = 0;
+
+    /* A multiselection containing only one unit type has no other subgroup. */
+    if (ordered[next_index]->class_id == ordered[main_index]->class_id) return false;
+    return G_FocusSelectedUnit(client, ordered[next_index]);
+}
+
 void G_ResetSelectionFocus(LPGAMECLIENT client) {
     DWORD *focus = G_SelectionFocusSlot(client);
     if (focus) *focus = 0;
@@ -587,6 +618,19 @@ void G_SendPointConfirmation(LPEDICT clent, LPCVECTOR2 point, BOOL attack) {
     gi.Write(PF_BYTE, &(LONG){ attack ? TE_ATTACK_CONFIRMATION : TE_MOVE_CONFIRMATION });
     gi.Write(PF_POSITION, &(VECTOR3){ point->x, point->y, 0 });
     gi.unicast(clent);
+}
+
+CLIENTCOMMAND(CycleSubgroup) {
+    LPGAMECLIENT client = clent ? clent->client : NULL;
+
+    if (!client || G_TargetModeActive(client)) return;
+    if (!G_CycleSelectionSubgroup(client)) return;
+
+    /* Match portrait-click focus changes: selection membership is unchanged,
+     * but every focused-subgroup presentation consumer must move together. */
+    Get_Portrait_f(clent);
+    Get_Commands_f(clent);
+    G_PlayUISoundForPlayer(clent, "SubGroupSelectionChange");
 }
 
 CLIENTCOMMAND(Focus) {
@@ -2381,6 +2425,7 @@ clientCommand_t clientCommands[] = {
     { "dropitem", CMD_DropItem },
     { "select", CMD_Select },
     { "focus", CMD_Focus },
+    { "cyclesubgroup", CMD_CycleSubgroup },
     { "+portraitcamera", CMD_PortraitCameraDown },
     { "-portraitcamera", CMD_PortraitCameraUp },
     { "quickcamera", CMD_QuickCamera },

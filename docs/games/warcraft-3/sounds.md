@@ -170,6 +170,11 @@ the same feedback immediately because the button click is the cast attempt.
 
 The generic `UISounds.slk` resolver is also used for:
 
+- `SubGroupSelectionChange` after `Tab` successfully moves a WC3 multiselect to
+  another unit-type subgroup; this is sent as non-positional UI audio to the
+  issuing player.
+- `AutoCastButtonClick` when an autocast toggle is accepted and `RallyPointPlace`
+  when a rally command is accepted; both use owner-only non-positional UI audio.
 - `PlaceBuildingDefault` after a build placement is accepted; this is sent as
   non-positional UI audio to the issuing player.
 - `ItemGet` after a world-item pickup succeeds; this is queued as positional
@@ -205,7 +210,6 @@ The following remain separate follow-up work:
 
 - `{label}Pissed` repeated-click responses;
 - `{label}Warcry`;
-- `AutoCastButtonClick`, `SubGroupSelectionChange`, and rally-point UI sounds;
 - `ConstructingBuilding` construction-start/selection sound behavior;
 - `YesAttack` as a distinct attack-order acknowledgement;
 - general weapon-vs-armour `UnitCombatSounds.slk` impacts;

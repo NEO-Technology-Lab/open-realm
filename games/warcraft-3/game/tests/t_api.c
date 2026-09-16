@@ -2488,6 +2488,61 @@ TEST(wc3_api, multiselect_focus_tracks_one_selected_unit_and_falls_back_when_rem
     T_ASSERT(!G_FocusSelectedUnit(client, second));
 }
 
+TEST(wc3_api, tab_cycle_advances_unit_type_subgroups_and_wraps) {
+    LPGAMECLIENT client = &game.clients[0];
+    LPEDICT footman_first = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0, 0);
+    LPEDICT footman_second = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 32, 0);
+    LPEDICT knight = alloc_test_unit(MAKEFOURCC('h','k','n','i'), 64, 0);
+    LPEDICT paladin = alloc_test_unit(MAKEFOURCC('H','p','a','l'), 96, 0);
+    UnitData_t footman_data = { .priority = 3 };
+    UnitData_t knight_data = { .priority = 2 };
+    UnitData_t paladin_data = { .priority = 1 };
+
+    client->ps.number = 0;
+    G_ResetSelectionFocus(client);
+    footman_first->data.UnitData = footman_second->data.UnitData = &footman_data;
+    knight->data.UnitData = &knight_data;
+    paladin->data.UnitData = &paladin_data;
+
+    LPEDICT units[] = { footman_first, footman_second, knight, paladin };
+    FOR_LOOP(i, sizeof(units) / sizeof(units[0])) {
+        units[i]->s.player = 0;
+        units[i]->svflags |= SVF_MONSTER;
+        G_SelectEntity(client, units[i]);
+    }
+
+    T_ASSERT(G_GetMainSelectedUnit(client) == footman_first);
+    T_ASSERT(G_CycleSelectionSubgroup(client));
+    T_ASSERT(G_GetMainSelectedUnit(client) == knight);
+    T_ASSERT(G_CycleSelectionSubgroup(client));
+    T_ASSERT(G_GetMainSelectedUnit(client) == paladin);
+    T_ASSERT(G_CycleSelectionSubgroup(client));
+    T_ASSERT(G_GetMainSelectedUnit(client) == footman_first);
+
+    /* Cycling focus must not mutate authoritative selection membership. */
+    FOR_LOOP(i, sizeof(units) / sizeof(units[0])) {
+        T_ASSERT(G_IsEntitySelected(client, units[i]));
+    }
+}
+
+TEST(wc3_api, tab_cycle_is_noop_for_single_type_selection) {
+    LPGAMECLIENT client = &game.clients[0];
+    LPEDICT first = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 0, 0);
+    LPEDICT second = alloc_test_unit(MAKEFOURCC('h','f','o','o'), 32, 0);
+
+    client->ps.number = 0;
+    first->s.player = second->s.player = 0;
+    first->svflags |= SVF_MONSTER;
+    second->svflags |= SVF_MONSTER;
+    G_ResetSelectionFocus(client);
+    G_SelectEntity(client, first);
+    G_SelectEntity(client, second);
+
+    T_ASSERT(G_GetMainSelectedUnit(client) == first);
+    T_ASSERT(!G_CycleSelectionSubgroup(client));
+    T_ASSERT(G_GetMainSelectedUnit(client) == first);
+}
+
 TEST(wc3_api, multiselect_order_matches_warsmash_priority_level_and_rawcode) {
     LPGAMECLIENT client = &game.clients[0];
     LPEDICT low_priority = alloc_test_unit(MAKEFOURCC('h','p','e','a'), 0, 0);

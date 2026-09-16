@@ -139,11 +139,32 @@ order-response selection. The complete selection remains authoritative for
 multi-unit Smart/Move/Attack-style orders. Inventory presentation follows the
 same focused-unit rule; see [Inventory And World Items](inventory-and-items.md).
 
-OpenRealm still does not reproduce Warsmash's focused/unfocused icon scaling,
-keyboard subgroup cycling, or the Warsmash behavior where clicking the
-already-focused exact icon collapses the group to that one unit. Those are
-presentation/navigation gaps, not reasons to merge inventory state across the
-group.
+`Tab` cycles the focused subgroup in the same Warsmash-compatible order used by
+the multiselect panel. It advances to the first selected unit of the next unit
+type, wraps from the final subgroup to the first, and leaves selection membership
+unchanged. A selection containing only one unit type is unaffected. The command
+reuses the normal focus refresh path, so subgroup highlight, portrait, inventory,
+and command card stay synchronized, and a successful change plays the authored
+`SubGroupSelectionChange` UI sound. Warsmash handles `Tab` directly in
+`MeleeUI.keyDown()` and its `advanceSelectedSubGroup()` uses the same unit-type
+`groupsWith()` relationship used by multiselect highlighting.
+
+OpenRealm currently ignores `Tab` while an entity/point target interaction is
+active. Its target callbacks resolve their acting unit from current server focus,
+whereas Warsmash retains separate active-command state while changing subgroups.
+Changing focus mid-target without first adding equivalent target-source state can
+retarget a pending spell/order to the wrong unit, while rebuilding the OpenRealm
+command card would cancel the target callback entirely. Keep that edge case as an
+explicit compatibility gap rather than silently corrupting the in-progress order.
+
+OpenRealm still does not reproduce Warsmash's focused/unfocused icon scaling or
+the Warsmash behavior where clicking the already-focused exact icon collapses the
+group to that one unit. Those are presentation/navigation gaps, not reasons to
+merge inventory state across the group.
+
+Regression coverage in `games/warcraft-3/game/tests/t_api.c` verifies that subgroup
+cycling advances by unit type, wraps to the first subgroup, preserves complete
+selection membership, and is a no-op for a same-type-only multiselection.
 
 ## Relationship Presentation
 
