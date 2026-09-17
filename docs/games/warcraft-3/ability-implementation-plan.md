@@ -90,11 +90,17 @@ make test-wc3-engine WC3_PATTERN='wc3_spell.anti_magic_shell*'
 Minimum coverage, taken from the brief:
 
 - procedure lookup for each registered alias;
-- authored field mapping (use a non-stock DataA/DataC in the fixture so the
-  test cannot pass on a hardcoded retail constant);
+- authored field mapping: a non-stock Data cell so the test cannot pass on a
+  hardcoded retail constant, *and* a stock-shaped case from `ability_audit -raw`
+  (omitted ROC columns, sentinel zeros, actual BuffID/`targs` tokens — do not
+  inject the fourcc or scale the consumer already hardcodes);
 - positive path and the nearest invalid target (`targs`, dead, wrong owner);
-- duration/expiry or pool-break, and recast;
-- save/load when new persistent state is added (`abilstatus.data`, edict fields).
+- duration/expiry or pool-break, and recast — assert the gameplay lock ended
+  (`channel.code`, movement flags, current order), not only the buff/helper;
+- the inverse another ability can take (Dispel/Purge/death through the real
+  expire path, not wiping slots);
+- save/load when new persistent state is added (`abilstatus.data`, edict fields,
+  or a live `edict->think` round-trip).
 
 Enemy targeting tests must mark both players `kPlayerTypeHuman` and clear
 `level.alliances`. `setup_test_world()` leaves `kPlayerTypeNone`, which makes
@@ -118,7 +124,7 @@ procedure.
 
 ```sh
 make test-wc3-engine WC3_PATTERN='wc3_spell.<name>*'
-make test-wc3-engine WC3_PATTERN='wc3_save.*'   # only if edict_t / abilstatus changed
+make test-wc3-engine WC3_PATTERN='wc3_save.*'   # edict_t / abilstatus / new think pointer
 ```
 
 Do not debug `make test` `+test '*'` while finishing one ability. Never
@@ -740,11 +746,14 @@ Extend the harness or fixture generator if it cannot yet exercise the path. See 
 Each new ability needs focused tests for:
 
 - registration and rawcode lookup;
-- the authored level and field mapping;
+- the authored level and field mapping (non-stock Data *and* a stock-shaped /
+  omitted-column case from the ROC then TFT brief; use the brief's BuffID/`targs`);
 - the positive target/effect path;
-- the nearest invalid target or inverse state;
-- duration, cancellation, expiry, and repeated casts where applicable;
-- save/load when the ability adds persistent entity state;
+- the nearest invalid target or inverse state, including another ability stripping
+  the status through the real expire path;
+- duration, cancellation, expiry, and repeated casts where applicable — assert the
+  gameplay lock ended, not only the buff or helper;
+- save/load when the ability adds persistent entity state or a thinker;
 - ROC and TFT rows when the archives differ.
 
 For Raven Form, reproduce both completion of Morph and replacement by Move before its end callback, followed by ascent,

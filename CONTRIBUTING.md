@@ -18,6 +18,9 @@ the real game module through the test binary; this does not require opening the 
 2. Add the smallest representative fixture and drive production entry points: orders, script/native dispatch, scheduler
    ticks, animation end callbacks, save/load, or message encode/decode, as relevant. Advance simulation time explicitly.
    Avoid wall-clock sleeps, copies of production algorithms, or mocks that replace the behavior being verified.
+   A non-stock Data cell is required so the test cannot pass on a hardcoded retail constant; it does not replace a
+   stock-shaped case, omitted ROC column, or the brief's actual BuffID/`targs`. Assert the gameplay lock that should
+   have ended, not only a buff or helper the execute path already set.
 3. Reproduce the failure before fixing it. Include the relevant interruption, pause, inverse, invalid-target, or restoration
    case; success-path helper tests alone do not establish that the gameplay lifecycle works.
 4. Fix the owner, rerun the regression, then run the required suite. For WC3 data changes, cover both ROC and TFT schemas
@@ -74,7 +77,7 @@ Assertion failures always include `__FILE__` and `__LINE__`. Under GitHub Action
 
 ### Warcraft III Save/Load
 
-The WC3 serializer follows the Quake 2 `g_save.c` pattern but writes a versioned envelope and converts `F_EDICT` references to entity indexes. Keep `games/warcraft-3/game/g_save.c`'s `field_t fields[]` synchronized with every persistent pointer in `struct edict_s`. Edict C callbacks use `F_CFUNCTION` and must be listed in `save_cfunctions[]`; JASS `F_FUNCTION` stays name-string identity for timers/triggers. Update the round-trip test whenever the edict contract changes. See [WC3 Save/Load](docs/games/warcraft-3/save-load.md).
+The WC3 serializer follows the Quake 2 `g_save.c` pattern but writes a versioned envelope and converts `F_EDICT` references to entity indexes. Keep `games/warcraft-3/game/g_save.c`'s `field_t fields[]` synchronized with every persistent pointer in `struct edict_s`. Edict C callbacks use `F_CFUNCTION` and must be listed in `save_cfunctions[]`; JASS `F_FUNCTION` stays name-string identity for timers/triggers. Update the round-trip test whenever the edict contract changes, and save while each new think pointer is live — `G_RunEntities` does not prove `WriteGame`. See [WC3 Save/Load](docs/games/warcraft-3/save-load.md).
 
 Do not include `test_framework.h` — it has been removed. Do not write a `main()` for test files; link against `tests/test_runner.c` instead.
 
