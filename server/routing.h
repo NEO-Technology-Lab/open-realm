@@ -23,6 +23,19 @@ typedef struct {
 typedef ROUTESLIDE *LPROUTESLIDE;
 typedef ROUTESLIDE const *LPCROUTESLIDE;
 
+/* A path texture's authored cells can be remapped by the owning game before
+ * they are stamped into the shared path map.  The router owns the generic
+ * quarter-turn geometry; games own the policy that selects the turn. */
+typedef struct {
+    int width, height, turn;
+} pathTexTransform_t;
+
+typedef struct {
+    LPCEDICT ent;
+    pathTex_t const *pathtex;
+} pathTexTransformParams_t;
+
 FLOAT CM_SlideRoute(LPCROUTESLIDE slide);
 BOOL CM_AccelerateRoute(LPROUTEPATH path, pathAccelParams_t const *params, LPVECTOR2 dir);
+pathTexTransform_t CM_GetPathTexTransform(LPCEDICT ent);
 #endif

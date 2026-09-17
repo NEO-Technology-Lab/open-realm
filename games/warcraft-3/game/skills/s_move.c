@@ -810,10 +810,11 @@ void M_CheckGround(LPEDICT self) {
     if (!floating) {
         for (LPEDICT surface = level.ground_surfaces; surface; surface = surface->ground_next) {
             pathTex_t const *pathtex = surface->pathtex;
+            pathTexTransform_t const transform = CM_GetPathTexTransform(surface);
             if (!surface->inuse || surface->destructable.dead ||
                 !surface->destructable.placement_solid || !pathtex) continue;
-            if (fabsf(self->s.origin.x - surface->s.origin.x) > pathtex->width * cell * 0.5f ||
-                fabsf(self->s.origin.y - surface->s.origin.y) > pathtex->height * cell * 0.5f) continue;
+            if (fabsf(self->s.origin.x - surface->s.origin.x) > transform.width * cell * 0.5f ||
+                fabsf(self->s.origin.y - surface->s.origin.y) > transform.height * cell * 0.5f) continue;
             height = MAX(height, surface->s.origin.z);
         }
     }

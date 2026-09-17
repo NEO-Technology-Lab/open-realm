@@ -12,6 +12,13 @@
 
 void setup_test_pathmap(DWORD width, DWORD height, BYTE const *cells);
 void setup_test_world(void);
+void reset_entities(void);
+void CM_SetupTestWorldBounds(LPCBOX2 bounds);
+BOOL CM_LineIsWalkableForRadius(LPCVECTOR2 a, LPCVECTOR2 b, FLOAT radius);
+BOOL CM_PointIsPathableForRadius(LPCVECTOR2 location, FLOAT radius);
+DWORD CM_BuildHeatmapForRadius(LPEDICT goalentity, FLOAT radius);
+BOOL CM_FlowCanReach(DWORD generation, FLOAT x, FLOAT y);
+LPEDICT Waypoint_add(LPCVECTOR2 spot);
 BOOL unit_issuetargetorder(LPEDICT self, LPCSTR order, LPEDICT target);
 void T_Damage(LPEDICT target, LPEDICT attacker, int damage);
 BOOL run_test_jass(LPCSTR src);
@@ -45,6 +52,83 @@ static bridge_band_pathtex_t destructable_bridge_band_pathtex = {
         {0,0,0,255}, {0,0,1,255}, {0,0,0,255}, {0,0,1,255}, {0,0,0,255},
     },
 };
+
+typedef enum {
+    BRIDGE_X,
+    BRIDGE_Y,
+    BRIDGE_DIAGONAL,
+} bridge_axis_t;
+
+typedef struct {
+    DWORD id;
+    WORD width, height;
+    bridge_axis_t axis;
+    LPCSTR mask;
+} human06_bridge_fixture_t;
+
+/* These masks are the red channel of the retail pathing TGAs; LoadTGA stores
+ * that channel in COLOR32.b, which is the routing blocker channel. */
+static LPCSTR const human06_bridge_large135_mask =
+    "..................####.........." "..................####.........."
+    "................####............" "................####............"
+    "..............####.............." "..............####.............."
+    "............####................" "............####................"
+    "..........####................##" "..........####................##"
+    "........####................####" "........####................####"
+    "......####................######" "......####................######"
+    "....####................######.." "....####................######.."
+    "..####................######...." "..####................######...."
+    "####................######......" "####................######......"
+    "##................######........" "##................######........"
+    "................######.........." "................######.........."
+    "..............######............" "..............######............"
+    "............######.............." "............######.............."
+    "..........######................" "..........######................"
+    "........######.................." "........######..................";
+
+static LPCSTR const human06_bridge_extra0_mask =
+    "################################" "################################"
+    "####....####........####....####" "####....####........####....####"
+    "................................" "................................"
+    "................................" "................................"
+    "................................" "................................"
+    "................................" "................................"
+    "................................" "................................"
+    "................................" "................................"
+    "................................" "................................"
+    "################################" "################################"
+    "################################" "################################";
+
+static LPCSTR const human06_bridge_extra90_mask =
+    "####..............####" "####..............####" "####..............####" "####..............####"
+    "##................####" "##................####" "##................####" "##................####"
+    "####..............####" "####..............####" "####..............####" "####..............####"
+    "##................####" "##................####" "##................####" "##................####"
+    "##................####" "##................####" "##................####" "##................####"
+    "####..............####" "####..............####" "####..............####" "####..............####"
+    "##................####" "##................####" "##................####" "##................####"
+    "####..............####" "####..............####" "####..............####" "####..............####";
+
+static human06_bridge_fixture_t const human06_bridge_fixtures[] = {
+    { MAKEFOURCC('Y', 'T', '1', '9'), 32, 32, BRIDGE_DIAGONAL, human06_bridge_large135_mask },
+    { MAKEFOURCC('Y', 'T', '2', '0'), 32, 22, BRIDGE_X, human06_bridge_extra0_mask },
+    { MAKEFOURCC('Y', 'T', '2', '2'), 22, 32, BRIDGE_Y, human06_bridge_extra90_mask },
+};
+
+typedef struct {
+    WORD width, height;
+    COLOR32 map[32 * 32];
+} human06_bridge_pathtex_t;
+
+static human06_bridge_pathtex_t make_human06_bridge_pathtex(human06_bridge_fixture_t const *fixture) {
+    human06_bridge_pathtex_t pathtex = { .width = fixture->width, .height = fixture->height };
+
+    FOR_LOOP(y, fixture->height) FOR_LOOP(x, fixture->width) {
+        pathtex.map[x + y * fixture->width] = MAKE(COLOR32, .r = 255, .g = 255,
+            .b = fixture->mask[x + y * fixture->width] == '.' ? 0 : 255, .a = 255);
+    }
+    return pathtex;
+}
 
 static LPEDICT make_test_destructable(FLOAT life, FLOAT x, FLOAT y) {
     LPEDICT ent = G_Spawn();
@@ -410,6 +494,114 @@ TEST(wc3_destructable, alive_walkable_bridge_preserves_clear_padding_outside_rai
     T_ASSERT(!CM_PointIsPathableForRadius(&left_rail, 0.0f));
     T_ASSERT(!CM_PointIsPathableForRadius(&left_outside, 0.0f));
     T_ASSERT(!CM_PointIsPathableForRadius(&right_outside, 0.0f));
+}
+
+TEST(wc3_destructable, human06_bridge_fixtures_cross_from_both_sides) {
+    static DestructableData_t const bridge_data = { .walkable = true };
+
+    FOR_LOOP(fixture_index, sizeof(human06_bridge_fixtures) / sizeof(human06_bridge_fixtures[0])) {
+        human06_bridge_fixture_t const *fixture = &human06_bridge_fixtures[fixture_index];
+
+        BYTE cells[64 * 64];
+        human06_bridge_pathtex_t pathtex = make_human06_bridge_pathtex(fixture);
+        VECTOR2 axis = fixture->axis == BRIDGE_X ? MAKE(VECTOR2, 0.0f, 1.0f) :
+            fixture->axis == BRIDGE_Y ? MAKE(VECTOR2, 1.0f, 0.0f) : MAKE(VECTOR2, 1.0f, -1.0f);
+        FLOAT const extent = fixture->axis == BRIDGE_DIAGONAL ? 192.0f : 320.0f;
+        VECTOR2 from = MAKE(VECTOR2, -extent * axis.x, -extent * axis.y);
+        VECTOR2 to = fixture->axis == BRIDGE_DIAGONAL ? MAKE(VECTOR2, 320.0f, -192.0f) :
+            MAKE(VECTOR2, extent * axis.x, extent * axis.y);
+        LPEDICT bridge, goal;
+        DWORD generation;
+
+        memset(cells, 2, sizeof(cells));
+        reset_entities();
+        setup_test_world();
+        setup_test_pathmap(64, 64, cells);
+        CM_SetupTestWorldBounds(&MAKE(BOX2, .min = {-1024.0f, -1024.0f}, .max = {1024.0f, 1024.0f}));
+        bridge = make_test_destructable(2500.0f, 0.0f, 0.0f);
+        bridge->class_id = fixture->id;
+        bridge->s.class_id = fixture->id;
+        bridge->s.origin2 = (VECTOR2){ 0.0f, 0.0f };
+        bridge->data.DestructableData = &bridge_data;
+        bridge->destructable.alive_pathtex = (pathTex_t *)&pathtex;
+        bridge->pathtex = (pathTex_t *)&pathtex;
+        bridge->targtype = TARG_BRIDGE;
+        G_RegisterGroundSurface(bridge);
+        CM_BakeStaticObstacles();
+
+        T_ASSERT(CM_PointIsPathableForRadius(&from, 0.0f));
+        T_ASSERT(CM_PointIsPathableForRadius(&to, 0.0f));
+        T_ASSERT(CM_LineIsWalkableForRadius(&from, &to, 0.0f));
+        T_ASSERT(CM_LineIsWalkableForRadius(&to, &from, 0.0f));
+
+        goal = Waypoint_add(&to);
+        generation = CM_BuildHeatmapForRadius(goal, 0.0f);
+        T_ASSERT(generation);
+        T_ASSERT(CM_FlowCanReach(generation, from.x, from.y));
+        goal->s.origin2 = from;
+        goal->s.origin.x = from.x;
+        goal->s.origin.y = from.y;
+        generation = CM_BuildHeatmapForRadius(goal, 0.0f);
+        T_ASSERT(generation);
+        T_ASSERT(CM_FlowCanReach(generation, to.x, to.y));
+    }
+}
+
+/* Runtime Human06 YT20 at (-800,320) is authored at angle zero.  Its model
+ * runs north-to-south, so the path texture's long axis must be stamped on Y. */
+TEST(wc3_destructable, human06_yt20_runtime_bridge_crosses_north_to_south) {
+    static DestructableData_t const bridge_data = { .walkable = true };
+    human06_bridge_pathtex_t pathtex = make_human06_bridge_pathtex(&human06_bridge_fixtures[1]);
+    BYTE cells[64 * 64];
+    VECTOR2 deck = { 4.0f, 0.0f }, from = { 19.0f, 732.0f }, to = { 4.0f, -718.0f };
+    LPEDICT bridge;
+
+    memset(cells, 0, sizeof(cells));
+    FOR_LOOP(y, 22) FOR_LOOP(x, 64) cells[x + (21 + y) * 64] = 2;
+    reset_entities(); setup_test_world(); setup_test_pathmap(64, 64, cells);
+    CM_SetupTestWorldBounds(&MAKE(BOX2, .min = {-1024.0f, -1024.0f}, .max = {1024.0f, 1024.0f}));
+    bridge = make_test_destructable(2500.0f, 0.0f, 0.0f);
+    bridge->class_id = MAKEFOURCC('Y', 'T', '2', '0'); bridge->s.class_id = bridge->class_id;
+    bridge->s.origin2 = (VECTOR2){ 0.0f, 0.0f }; bridge->data.DestructableData = &bridge_data;
+    bridge->destructable.alive_pathtex = (pathTex_t *)&pathtex; bridge->pathtex = (pathTex_t *)&pathtex;
+    bridge->targtype = TARG_BRIDGE; G_RegisterGroundSurface(bridge); CM_BakeStaticObstacles();
+
+    T_ASSERT(CM_PointIsPathableForRadius(&deck, 0.0f));
+    T_ASSERT(CM_LineIsWalkableForRadius(&from, &to, 32.0f));
+}
+
+TEST(wc3_destructable, bridge_path_texture_rotation_covers_all_quarter_turns) {
+    static DestructableData_t const bridge_data = { .walkable = true };
+    human06_bridge_pathtex_t pathtex = make_human06_bridge_pathtex(&human06_bridge_fixtures[1]);
+
+    FOR_LOOP(angle, 4) {
+        BYTE cells[64 * 64];
+        BOOL const vertical = !(angle & 1);
+        VECTOR2 from = vertical ? MAKE(VECTOR2, 0.0f, -900.0f) : MAKE(VECTOR2, -900.0f, 0.0f);
+        VECTOR2 to = vertical ? MAKE(VECTOR2, 0.0f, 900.0f) : MAKE(VECTOR2, 900.0f, 0.0f);
+        LPEDICT bridge;
+        pathTexTransform_t transform;
+
+        memset(cells, 0, sizeof(cells));
+        if (vertical) FOR_LOOP(y, 32) FOR_LOOP(x, 64) cells[x + (y + 16) * 64] = 2;
+        else FOR_LOOP(y, 64) FOR_LOOP(x, 32) cells[x + 16 + y * 64] = 2;
+        reset_entities(); setup_test_world(); setup_test_pathmap(64, 64, cells);
+        CM_SetupTestWorldBounds(&MAKE(BOX2, .min = {-1024.0f, -1024.0f}, .max = {1024.0f, 1024.0f}));
+        bridge = make_test_destructable(2500.0f, 0.0f, 0.0f);
+        bridge->class_id = MAKEFOURCC('Y', 'T', '2', '0'); bridge->s.class_id = bridge->class_id;
+        bridge->s.origin2 = (VECTOR2){ 0.0f, 0.0f }; bridge->s.angle = angle * (FLOAT)M_PI / 2.0f;
+        bridge->data.DestructableData = &bridge_data;
+        bridge->destructable.alive_pathtex = (pathTex_t *)&pathtex; bridge->pathtex = (pathTex_t *)&pathtex;
+        bridge->targtype = TARG_BRIDGE; G_RegisterGroundSurface(bridge); CM_BakeStaticObstacles();
+        transform = CM_GetPathTexTransform(bridge);
+
+        T_EQ(transform.turn, (angle + 1) % 4);
+        T_EQ(transform.width, vertical ? 22 : 32);
+        T_EQ(transform.height, vertical ? 32 : 22);
+        T_ASSERT(CM_LineIsWalkableForRadius(&from, &to, 0.0f));
+        G_KillDestructable(bridge, NULL);
+        T_ASSERT(!CM_LineIsWalkableForRadius(&from, &to, 0.0f));
+    }
 }
 
 TEST(wc3_destructable, completed_death_holds_authored_final_frame) {
