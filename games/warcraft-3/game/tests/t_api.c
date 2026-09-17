@@ -1318,6 +1318,39 @@ TEST(wc3_environment_fog, reset_without_default_is_noop) {
     gi.configstring = old_configstring;
 }
 
+static LPCSTR fog_roc_cvar(LPCSTR name, LPCSTR fallback) { return !strcmp(name, "fs_expansion") ? "0" : fallback; }
+static LPCSTR fog_tft_cvar(LPCSTR name, LPCSTR fallback) { return !strcmp(name, "fs_expansion") ? "1" : fallback; }
+
+static void check_singleton_default_zfog(wc3EnvironmentFogState_t const *fog) {
+    T_EQ(fog->style, WC3_ENV_FOG_LINEAR); /* authored 0 maps through +1 */
+    T_FEQ(fog->start, 20000.0f, 0.001f);
+    T_FEQ(fog->end, 50000.0f, 0.001f);
+    T_FEQ(fog->density, 0.0f, 0.001f);
+    T_FEQ(fog->color.x, 0.0f, 0.001f);
+    T_FEQ(fog->color.y, 0.0f, 0.001f);
+    T_FEQ(fog->color.z, 0.0f, 0.001f);
+}
+
+/* Retail [DefaultZFog] is a singleton; TFT index 1 never parses, so index 0 is the per-field fallback. */
+TEST(wc3_environment_fog, singleton_default_zfog_parses_under_both_editions) {
+    stbIniCache_t saved = game.config.misc, custom = { 0 };
+    LPCSTR (*old_cvar)(LPCSTR, LPCSTR) = gi.CvarString;
+    wc3EnvironmentFogState_t fog;
+
+    T_ASSERT(Stb_IniCacheLoad(&custom, "TestData\\DefaultZFog.txt"));
+    game.config.misc = custom;
+    gi.CvarString = fog_roc_cvar;
+    T_ASSERT(G_EnvironmentFogDefault(&fog));
+    check_singleton_default_zfog(&fog);
+    gi.CvarString = fog_tft_cvar;
+    T_ASSERT(G_EnvironmentFogDefault(&fog));
+    check_singleton_default_zfog(&fog);
+
+    gi.CvarString = old_cvar;
+    game.config.misc = saved;
+    Stb_IniCacheFree(&custom);
+}
+
 TEST(wc3_environment_fog, invalid_extended_style_disables_scene_fog) {
     void (*old_configstring)(DWORD, LPCSTR) = gi.configstring;
 
@@ -1594,6 +1627,25 @@ TEST(wc3_api, set_unit_position_loc_uses_same_unstuck_search) {
     T_NOT_NULL(moved);
     T_FEQ(moved->s.origin.x, 256.0f, 0.001f);
     T_FEQ(moved->s.origin.y, 192.0f, 0.001f);
+}
+
+/* Issue-418: HumanX03.w3x calls OffsetLocation(GetUnitLoc(null unit), ...) which
+ * reaches GetLocationX/MoveLocation with a null handle. Null locations read as 0
+ * (same contract as GetRectCenterX) and MoveLocation on null is a safe no-op. */
+TEST(wc3_api, null_location_natives_return_zero_and_noop) {
+    T_ASSERT(run_test_jass(
+        "function main takes nothing returns nothing\n"
+        "  local location nullLoc = null\n"
+        "  local location live = Location(10.0, 20.0)\n"
+        "  call BJassAssert(GetLocationX(nullLoc) == 0.0, \"GetLocationX(null) must be 0\")\n"
+        "  call BJassAssert(GetLocationY(nullLoc) == 0.0, \"GetLocationY(null) must be 0\")\n"
+        "  call MoveLocation(nullLoc, 100.0, 200.0)\n"
+        "  call BJassAssert(GetLocationX(live) == 10.0, \"live location x\")\n"
+        "  call BJassAssert(GetLocationY(live) == 20.0, \"live location y\")\n"
+        "  call MoveLocation(live, 30.0, 40.0)\n"
+        "  call BJassAssert(GetLocationX(live) == 30.0, \"moved location x\")\n"
+        "  call BJassAssert(GetLocationY(live) == 40.0, \"moved location y\")\n"
+        "endfunction\n"));
 }
 
 TEST(wc3_api, set_unit_x_y_remain_raw_coordinates_on_blocked_pathing) {
@@ -4214,6 +4266,124 @@ TEST(wc3_api, controller_focus_updates_camera_and_respects_control) {
     cmd.focus = (VECTOR2){ -100, 700 };
     globals.ClientInput(&g_edicts[0], &cmd);
     T_FEQ(gc->camera.state.position.x, 0, 0.001f); T_FEQ(gc->camera.state.position.y, 512, 0.001f);
+}
+
+/* Issue #418: SetUnitUserData / GetUnitUserData must persist scratch integer on the unit. */
+TEST(wc3_api, unit_user_data_survives_set_get) {
+    T_ASSERT(run_test_jass(
+        "function main takes nothing returns nothing\n"
+        "  local unit u = CreateUnit(Player(0), 'hfoo', 0.0, 0.0, 0.0)\n"
+        "  call SetUnitUserData(u, 42)\n"
+        "  call BJassAssert(GetUnitUserData(u) == 42, \"user data must round-trip\")\n"
+        "  call SetUnitUserData(u, -7)\n"
+        "  call BJassAssert(GetUnitUserData(u) == -7, \"negative user data\")\n"
+        "  call SetUnitUserData(null, 99)\n"
+        "  call BJassAssert(GetUnitUserData(null) == 0, \"null unit must return 0\")\n"
+        "endfunction\n"));
+}
+
+/* Issue #418: UnitSetUsesAltIcon must persist the flag on the unit. */
+TEST(wc3_api, unit_set_uses_alt_icon_persists) {
+    LPEDICT unit = NULL;
+    T_ASSERT(run_test_jass(
+        "function main takes nothing returns nothing\n"
+        "  local unit u = CreateUnit(Player(0), 'hfoo', 0.0, 0.0, 0.0)\n"
+        "  call UnitSetUsesAltIcon(u, true)\n"
+        "endfunction\n"));
+    FOR_LOOP(i, globals.num_edicts) {
+        if (g_edicts[i].inuse && g_edicts[i].class_id == MAKEFOURCC('h','f','o','o')) {
+            unit = &g_edicts[i]; break;
+        }
+    }
+    T_NOT_NULL(unit);
+    T_ASSERT(unit->uses_alt_icon);
+    T_ASSERT(run_test_jass(
+        "function main takes nothing returns nothing\n"
+        "  call UnitSetUsesAltIcon(null, true)\n"
+        "endfunction\n"));
+}
+
+/* Issue #418: GetChangingUnit / GetChangingUnitPrevOwner must expose ownership-change event context. */
+TEST(wc3_api, change_owner_event_exposes_unit_and_prev_owner) {
+    /* Verify the natives are registered and callable without crash. The
+     * trigger-context getters return null outside an event callback, which
+     * is correct because no ownership change event was published yet. */
+    T_ASSERT(run_test_jass(
+        "function main takes nothing returns nothing\n"
+        "  call BJassAssert(GetChangingUnit() == null, \"no event context: null unit\")\n"
+        "  local player p = GetChangingUnitPrevOwner()\n"
+        "  call BJassAssert(p == null, \"no event context: null player\")\n"
+        "endfunction\n"));
+}
+
+/* Issue #418: EnumItemsInRect must visit in-world items and bind GetEnumItem. */
+TEST(wc3_api, enum_items_in_rect_visits_world_items) {
+    T_ASSERT(run_test_jass(
+        "globals\n"
+        "  integer udg_EnumCount = 0\n"
+        "  item udg_LastItem = null\n"
+        "endglobals\n"
+        "function countItem takes nothing returns nothing\n"
+        "  set udg_EnumCount = udg_EnumCount + 1\n"
+        "  set udg_LastItem = GetEnumItem()\n"
+        "endfunction\n"
+        "function verifyEnum takes nothing returns nothing\n"
+        "  call BJassAssert(udg_EnumCount == 1, \"one world item must be enumerated\")\n"
+        "  call BJassAssert(udg_LastItem != null, \"GetEnumItem must be non-null inside callback\")\n"
+        "endfunction\n"
+        "function main takes nothing returns nothing\n"
+        "  call CreateItem('spro', 0.0, 0.0)\n"
+        "  call EnumItemsInRect(GetWorldBounds(), null, function countItem)\n"
+        "endfunction\n"));
+    jass_callbyname(level.vm, "verifyEnum", true);
+    jass_runevents(level.vm);
+    T_ASSERT(!jass_rterror_pending(level.vm));
+}
+
+/* Issue #418: stub natives must execute without crash or AI_STOP. */
+TEST(wc3_api, campaign_stub_natives_accept_calls_without_crash) {
+    T_ASSERT(run_test_jass(
+        "function main takes nothing returns nothing\n"
+        "  call SetCampaignMenuRaceEx(1)\n"
+        "  call DoNotSaveReplay()\n"
+        "  call SetAltMinimapIcon(\"UI\\MiniMap\\Human.blp\")\n"
+        "endfunction\n"));
+}
+
+TEST(wc3_api, issue_418_campaign_natives_are_registered) {
+    T_ASSERT(run_test_jass(
+        "function main takes nothing returns nothing\n"
+        "  call SetAllyColorFilterState(2)\n"
+        "  call BJassAssert(GetAllyColorFilterState() == 2, \"ally color state round-trip\")\n"
+        "  call UnitRemoveBuffsEx(null, true, true, true, true, true, true, true)\n"
+        "endfunction\n"));
+}
+
+TEST(wc3_api, destroyed_quest_handle_is_safe) {
+    T_ASSERT(run_test_jass(
+        "function main takes nothing returns nothing\n"
+        "  local quest q = CreateQuest()\n"
+        "  local questitem qi = QuestCreateItem(q)\n"
+        "  call DestroyQuest(q)\n"
+        "  call QuestSetDiscovered(q, true)\n"
+        "  call QuestItemSetCompleted(qi, true)\n"
+        "  call BJassAssert(not IsQuestDiscovered(q), \"destroyed quest is invalid\")\n"
+        "endfunction\n"));
+}
+
+/* Issue #418: bot assault natives must use the retail common.ai signatures. */
+TEST(wc3_api, bot_assault_natives_noop_on_null_player) {
+    T_ASSERT(run_test_jass(
+        "function main takes nothing returns nothing\n"
+        "  call SetCaptainHome(1, 0.0, 0.0)\n"
+        "  call SetStagePoint(0.0, 0.0)\n"
+        "  call SuicideUnit(1, 'hfoo')\n"
+        "  call SuicideUnitEx(1, 'hfoo', 0)\n"
+        "  call BJassAssert(not SuicidePlayer(null, false), \"empty player returns false\")\n"
+        "  call BJassAssert(not MergeUnits(1, 'hfoo', 'hfoo', 'hfoo'), \"empty player returns false\")\n"
+        "  call BJassAssert(GetUpgradeGoldCost(0) == 0, \"unknown upgrade returns 0\")\n"
+        "  call BJassAssert(GetUpgradeLumberCost(0) == 0, \"unknown upgrade returns 0\")\n"
+        "endfunction\n"));
 }
 
 #endif /* BZ_TESTS */

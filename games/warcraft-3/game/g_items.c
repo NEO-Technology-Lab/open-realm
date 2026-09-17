@@ -130,6 +130,10 @@ BOOL G_IsItem(LPCEDICT item) {
         (item->item.in_world || item->item.carrier || (item->data.ItemData && item->data.ItemData->file));
 }
 
+/* The item currently being visited by EnumItemsInRect, read back by the
+ * GetEnumItem native inside the enum action (mirrors currentdestructable). */
+LPEDICT currentenumitem = NULL;
+
 static DWORD G_InventoryRequiredUpgrade(DWORD ability_id) {
     /* Stock unit-inventory abilities are present on the unit before the race
      * Backpack upgrade is researched. UpgradeData effects are not normalized
@@ -161,11 +165,33 @@ static BOOL G_InventoryAbilityAvailable(LPCEDICT unit, LPCSTR ability) {
     return G_GetPlayerTechResearchedLevel(owner, required_upgrade) > 0;
 }
 
+/* Look up inventory capacity from RoC data: AInv → AIab direct → scan AIab aliases.
+ * AInv is absent from retail RoC AbilityData.slk; AIa6 (code AIab, inv1=6) is the
+ * canonical 6-slot alias.  Used both for the hero synthesis path and as a fallback
+ * when an authored AInv ability has no data in RoC archives. */
+static DWORD roc_inventory_cap(void) {
+    LONG cap = (LONG)AB_Data("AInv", 1, 1);
+    if (cap <= 0) cap = (LONG)AB_Data("AIab", 1, 1);
+    if (cap <= 0) {
+        DWORD const roc_inv = MAKEFOURCC('A','I','a','b');
+        FOR_LOOP(i, g_AbilityDataCount) {
+            AbilityData_t const *row = &g_AbilityData[i];
+            if (!row->id || G_AbilityCode(row->id) != roc_inv) continue;
+            cap = (LONG)row->level[0].data[0].number;
+            if (cap > 0) break;
+        }
+    }
+    return cap > 0 ? (DWORD)MIN(cap, MAX_INVENTORY) : 0;
+}
+
 static DWORD G_InventoryAbilityCapacity(LPCEDICT unit, LPCSTR ability) {
     LONG capacity;
 
     if (!unit || !ability || strlen(ability) != 4) return 0;
     capacity = (LONG)AB_Data(ability, 1, 1); /* inv1 / Item Capacity */
+    /* AInv row is absent from RoC AbilityData.slk; fall back to the AIab alias tree. */
+    if (capacity <= 0 && G_IsReignOfChaosMap(level.mapinfo))
+        return roc_inventory_cap();
     if (capacity <= 0) {
         fprintf(stderr, "G_InventoryCapacity: %.4s inventory ability %.4s has invalid inv1=%ld\n",
                 (char *)&unit->class_id, ability, (long)capacity);
@@ -182,8 +208,9 @@ DWORD G_InventoryCapacity(LPCEDICT unit) {
     if (unit->data.UnitAbilities) abilities = unit->data.UnitAbilities->abilList;
     if (abilities) {
         PARSE_LIST(abilities, abil, parse_segment) {
-            /* Typed AbilityData resolves custom inventory abilities without returning to the removed sheet cache. */
-            if (G_AbilityCodeName(abil) != MAKEFOURCC('A','I','n','v')) continue;
+            /* TFT inventory abilities share code AInv; RoC aliases share code AIab. */
+            DWORD const code = G_AbilityCodeName(abil);
+            if (code != MAKEFOURCC('A','I','n','v') && code != MAKEFOURCC('A','I','a','b')) continue;
             has_inventory_ability = true;
             if (!G_InventoryAbilityAvailable(unit, abil)) continue;
             return G_InventoryAbilityCapacity(unit, abil);
@@ -191,12 +218,11 @@ DWORD G_InventoryCapacity(LPCEDICT unit) {
     }
 
     /* Warsmash restores the classic ROC hero contract by adding the stock
-     * AInv ability when a hero has no inventory ability authored in its normal
-     * ability list.  ROC map formats are <= 24; TFT/custom data may intentionally
-     * omit inventory, so do not synthesize AInv there. */
-    if (!has_inventory_ability && G_IsReignOfChaosMap(level.mapinfo) && G_UnitIsHero(unit)) {
-        return G_InventoryAbilityCapacity(unit, "AInv");
-    }
+     * inventory ability when a hero has no inventory ability authored in its
+     * normal ability list.  ROC map formats are <= 24; TFT/custom data may
+     * intentionally omit inventory, so do not synthesize there. */
+    if (!has_inventory_ability && G_IsReignOfChaosMap(level.mapinfo) && G_UnitIsHero(unit))
+        return roc_inventory_cap();
     return 0;
 }
 
@@ -336,7 +362,7 @@ BOOL G_DropItemAt(LPEDICT unit, DWORD slot, LPCVECTOR2 position) {
     LPEDICT item;
     VECTOR2 drop_position;
 
-    if (!unit || !position || slot >= MAX_INVENTORY) {
+    if (!unit || !position || slot >= (DWORD)G_InventoryCapacity(unit)) {
         return false;
     }
     item = unit->inventory[slot];

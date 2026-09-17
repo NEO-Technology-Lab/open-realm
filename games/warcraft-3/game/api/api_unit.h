@@ -260,6 +260,20 @@ DWORD SetUnitVertexColor(LPJASS j) {
     }
     return 0;
 }
+DWORD SetUnitUserData(LPJASS j) {
+    LPEDICT whichUnit = jass_checkhandle(j, 1, "unit");
+    if (whichUnit) whichUnit->user_data = jass_checkinteger(j, 2);
+    return 0;
+}
+DWORD GetUnitUserData(LPJASS j) {
+    LPEDICT whichUnit = jass_checkhandle(j, 1, "unit");
+    return jass_pushinteger(j, whichUnit ? whichUnit->user_data : 0);
+}
+DWORD UnitSetUsesAltIcon(LPJASS j) {
+    LPEDICT whichUnit = jass_checkhandle(j, 1, "unit");
+    if (whichUnit) whichUnit->uses_alt_icon = jass_checkboolean(j, 2);
+    return 0;
+}
 DWORD QueueUnitAnimation(LPJASS j) {
     //LPEDICT whichUnit = jass_checkhandle(j, 1, "unit");
     //LPCSTR whichAnimation = jass_checkstring(j, 2);
@@ -845,6 +859,11 @@ DWORD UnitRemoveBuffs(LPJASS j) {
     //LPEDICT whichUnit = jass_checkhandle(j, 1, "unit");
     //BOOL removePositive = jass_checkboolean(j, 2);
     //BOOL removeNegative = jass_checkboolean(j, 3);
+    return 0;
+}
+DWORD UnitRemoveBuffsEx(LPJASS j) {
+    /* TODO: ability-owned dispel filtering is not represented yet. */
+    (void)j;
     return 0;
 }
 DWORD UnitAddSleep(LPJASS j) {
